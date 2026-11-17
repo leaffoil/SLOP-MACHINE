@@ -1,0 +1,86 @@
+/* ========================================
+   NEON ARCADE SLOTS — RESPONSIVE
+   ======================================== */
+
+/* ---- Tablet (max 900px) ---- */
+@media (max-width: 900px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+
+  .left-sidebar  { order: 2; }
+  .slot-machine-wrap { order: 1; }
+  .right-sidebar { order: 3; }
+
+  .left-sidebar,
+  .right-sidebar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .payout-table { grid-column: span 2; }
+
+  .slot-machine { max-width: 100%; }
+  .controls-panel { max-width: 100%; }
+}
+
+/* ---- Mobile (max 600px) ---- */
+@media (max-width: 600px) {
+  .app-header { padding: 8px 14px; }
+  .logo-text { font-size: 0.85rem; }
+  .header-center { gap: 14px; }
+  .stat-value { font-size: 0.95rem; }
+  .stat-label { font-size: 0.55rem; }
+
+  .nav-btn { padding: 8px 10px; font-size: 0.6rem; min-width: 48px; }
+  .nav-btn svg { width: 16px; height: 16px; }
+
+  .section { padding: 14px; }
+  .section-title { font-size: 1.2rem; }
+
+  .reel-window { width: 76px; height: 86px; }
+  .symbol-slot { width: 70px; height: 70px; }
+  .symbol-slot svg { width: 54px; height: 54px; }
+
+  .left-sidebar,
+  .right-sidebar {
+    grid-template-columns: 1fr;
+  }
+  .payout-table { grid-column: span 1; }
+
+  .controls-panel { gap: 10px; }
+  .spin-btn { width: 76px; height: 76px; }
+
+  .machines-grid { grid-template-columns: 1fr; }
+  .collection-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+  .achievements-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+
+  .mission-card { flex-direction: column; align-items: flex-start; }
+
+  .bet-controls, .auto-controls { padding: 6px; }
+  .ctrl-btn { padding: 5px 7px; font-size: 0.65rem; }
+
+  .toast { font-size: 0.75rem; padding: 10px 18px; }
+}
+
+/* ---- Very small (max 380px) ---- */
+@media (max-width: 380px) {
+  .header-stat:nth-child(3) { display: none; } /* hide prestige on tiny screens */
+  .reel-window { width: 64px; height: 72px; }
+  .symbol-slot { width: 58px; height: 58px; }
+  .symbol-slot svg { width: 46px; height: 46px; }
+  .spin-btn { width: 68px; height: 68px; }
+}
+
+/* ---- Desktop wide (min 1200px) ---- */
+@media (min-width: 1200px) {
+  .game-layout {
+    grid-template-columns: 240px 1fr 240px;
+    gap: 28px;
+  }
+  .slot-machine { max-width: 520px; }
+  .reel-window { width: 110px; height: 118px; }
+}

@@ -1,0 +1,127 @@
+/* ========================================
+   NEON ARCADE SLOTS — ANIMATIONS
+   ======================================== */
+
+/* ---- Reel spin (placeholder, enhanced in Stage 2) ---- */
+@keyframes reel-spin {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(-900px); }
+}
+
+/* ---- Reel blur during spin ---- */
+@keyframes reel-blur {
+  0%, 100% { filter: blur(0); }
+  30%, 70%  { filter: blur(2px); }
+}
+
+/* ---- Win flash ---- */
+@keyframes win-flash {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ---- Jackpot pulse ---- */
+@keyframes jackpot-pulse {
+  0%   { box-shadow: 0 0 10px rgba(255,215,0,0.4); }
+  50%  { box-shadow: 0 0 60px rgba(255,215,0,0.9), 0 0 120px rgba(255,215,0,0.4); }
+  100% { box-shadow: 0 0 10px rgba(255,215,0,0.4); }
+}
+
+/* ---- Level up scale ---- */
+@keyframes level-up-pop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ---- Coin particle ---- */
+@keyframes coin-fly {
+  0%   { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate(var(--tx, 60px), var(--ty, -120px)) rotate(var(--rot, 360deg)); opacity: 0; }
+}
+
+/* ---- Screen shake ---- */
+@keyframes screen-shake {
+  0%,100% { transform: translate(0,0); }
+  20%     { transform: translate(-4px, 2px); }
+  40%     { transform: translate(4px, -2px); }
+  60%     { transform: translate(-3px, 3px); }
+  80%     { transform: translate(3px, -1px); }
+}
+
+/* ---- Toast slide ---- */
+@keyframes toast-in {
+  from { transform: translateX(-50%) translateY(100px); opacity: 0; }
+  to   { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* ---- Chrome lights twinkle ---- */
+@keyframes light-twinkle {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1; }
+}
+
+/* ---- Prestige celebration ---- */
+@keyframes prestige-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ---- Apply classes ---- */
+
+.anim-reel-spin {
+  animation: reel-spin 0.1s linear infinite;
+}
+
+.anim-win-flash {
+  animation: win-flash 0.4s ease-in-out 4;
+}
+
+.anim-jackpot-pulse {
+  animation: jackpot-pulse 0.8s ease-in-out infinite;
+}
+
+.anim-screen-shake {
+  animation: screen-shake 0.5s ease;
+}
+
+.anim-level-up-pop {
+  animation: level-up-pop 0.5s cubic-bezier(0.17, 0.89, 0.32, 1.28) forwards;
+}
+
+.coin-particle {
+  position: fixed;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 6px var(--gold-glow);
+  pointer-events: none;
+  z-index: 999;
+  animation: coin-fly 0.8s ease-out forwards;
+}
+
+/* Chrome light individual delay */
+.chrome-light:nth-child(1) { animation: light-twinkle 1.2s ease-in-out 0.0s infinite; }
+.chrome-light:nth-child(2) { animation: light-twinkle 1.2s ease-in-out 0.2s infinite; }
+.chrome-light:nth-child(3) { animation: light-twinkle 1.2s ease-in-out 0.4s infinite; }
+.chrome-light:nth-child(4) { animation: light-twinkle 1.2s ease-in-out 0.6s infinite; }
+.chrome-light:nth-child(5) { animation: light-twinkle 1.2s ease-in-out 0.8s infinite; }
+
+/* Payout counter count-up highlight */
+@keyframes payout-count {
+  from { transform: scale(1.3); color: var(--neon); }
+  to   { transform: scale(1);   color: var(--gold); }
+}
+.anim-payout-count {
+  animation: payout-count 0.3s ease-out forwards;
+}
+
+/* Spin button active pulse */
+@keyframes spin-btn-idle {
+  0%, 100% { box-shadow: 0 0 25px rgba(255,215,0,0.3), 0 4px 15px rgba(0,0,0,0.5); }
+  50%       { box-shadow: 0 0 40px rgba(255,215,0,0.6), 0 4px 20px rgba(0,0,0,0.6); }
+}
+.spin-btn:not(:disabled) {
+  animation: spin-btn-idle 2s ease-in-out infinite;
+}
