@@ -21,3 +21,7 @@ Deployable directly on Vercel or any static web host.
 
 ## Local Development
 Simply open `index.html` in any modern web browser or serve via any static HTTP server.
+
+## AI Assistance
+
+This project was developed with the assistance of AI tools for brainstorming, implementation, debugging, and code refinement. All generated code and suggestions were reviewed and integrated into the project during development.
