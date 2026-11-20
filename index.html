@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#13132a" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Neon Arcade Slots</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/animations.css" />
@@ -10,7 +11,6 @@
 </head>
 <body>
 
-  <!-- ===== HEADER ===== -->
   <header class="app-header">
     <div class="header-left">
       <div class="logo">
@@ -39,7 +39,7 @@
       </div>
     </div>
     <div class="header-right">
-      <button class="icon-btn" id="mute-btn" title="Toggle Sound">
+      <button class="icon-btn" id="mute-btn" title="Toggle Sound" aria-label="Toggle sound">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M11 5L6 9H2v6h4l5 4V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
           <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -49,7 +49,6 @@
     </div>
   </header>
 
-  <!-- ===== NAVIGATION ===== -->
   <nav class="main-nav">
     <button class="nav-btn active" data-section="game">
       <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 7V5a4 4 0 0 1 8 0v2" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="2" fill="currentColor"/></svg>
@@ -81,16 +80,13 @@
     </button>
   </nav>
 
-  <!-- ===== MAIN CONTENT ===== -->
   <main class="app-main">
 
-    <!-- SECTION: GAME -->
     <section id="section-game" class="section active">
       <div class="game-layout">
 
-        <!-- Left panel: XP & quick info -->
         <aside class="game-sidebar left-sidebar">
-          <div class="sidebar-card">
+          <div class="sidebar-card card-xp">
             <div class="sidebar-label">XP PROGRESS</div>
             <div class="xp-bar-wrap">
               <div class="xp-bar" id="xp-bar" style="width: 20%"></div>
@@ -137,7 +133,6 @@
           </div>
         </aside>
 
-        <!-- Center: Slot Machine -->
         <div class="slot-machine-wrap">
           <div class="machine-name-badge" id="machine-name-badge">CLASSIC MACHINE</div>
 
@@ -154,7 +149,7 @@
               <div class="reel-frame">
                 <div class="reel-window">
                   <div class="reel" id="reel-0">
-                    <!-- Symbols injected by JS -->
+
                     <div class="symbol-placeholder"></div>
                     <div class="symbol-placeholder"></div>
                     <div class="symbol-placeholder"></div>
@@ -193,7 +188,6 @@
             <div class="machine-bottom-chrome"></div>
           </div>
 
-          <!-- Controls -->
           <div class="controls-panel">
             <div class="bet-controls">
               <button class="ctrl-btn" id="bet-min">MIN</button>
@@ -225,15 +219,14 @@
           </div>
         </div>
 
-        <!-- Right panel: stats & missions -->
         <aside class="game-sidebar right-sidebar">
-          <div class="sidebar-card">
+          <div class="sidebar-card card-session">
             <div class="sidebar-label">SESSION</div>
             <div class="stat-mini-row"><span>Spins</span><span class="gold" id="sess-spins">0</span></div>
             <div class="stat-mini-row"><span>Wins</span><span class="neon" id="sess-wins">0</span></div>
             <div class="stat-mini-row"><span>Best Win</span><span class="purple" id="sess-best">0</span></div>
           </div>
-          <div class="sidebar-card">
+          <div class="sidebar-card card-missions">
             <div class="sidebar-label">DAILY MISSIONS</div>
             <div class="mission-mini" id="mission-mini-list">
               <div class="mission-item">
@@ -248,7 +241,7 @@
               </div>
             </div>
           </div>
-          <div class="sidebar-card">
+          <div class="sidebar-card card-last">
             <div class="sidebar-label">LAST RESULT</div>
             <div class="last-result" id="last-result">
               <div class="last-symbols" id="last-symbols">
@@ -263,7 +256,6 @@
       </div>
     </section>
 
-    <!-- SECTION: MACHINES -->
     <section id="section-machines" class="section">
       <div class="section-header"><h2 class="section-title">Machines</h2><p class="section-sub">Unlock new machines as you level up</p></div>
       <div class="machines-grid">
@@ -308,7 +300,6 @@
       </div>
     </section>
 
-    <!-- SECTION: COLLECTION -->
     <section id="section-collection" class="section">
       <div class="section-header"><h2 class="section-title">Symbol Collection</h2><p class="section-sub">Collect all symbols to earn cosmetic rewards</p></div>
       <div class="collection-progress-wrap">
@@ -316,7 +307,7 @@
         <span class="collection-pct" id="collection-pct">0 / 7 Collected</span>
       </div>
       <div class="collection-grid" id="collection-grid">
-        <!-- Populated by JS -->
+
         <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Cherry</div></div>
         <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Lemon</div></div>
         <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Watermelon</div></div>
@@ -327,7 +318,6 @@
       </div>
     </section>
 
-    <!-- SECTION: ACHIEVEMENTS -->
     <section id="section-achievements" class="section">
       <div class="section-header"><h2 class="section-title">Achievements</h2><p class="section-sub">Milestones earned through gameplay</p></div>
       <div class="achievements-grid" id="achievements-grid">
@@ -342,7 +332,6 @@
       </div>
     </section>
 
-    <!-- SECTION: MISSIONS -->
     <section id="section-missions" class="section">
       <div class="section-header"><h2 class="section-title">Daily Missions</h2><p class="section-sub">Resets every day at midnight</p></div>
       <div class="missions-list" id="missions-list">
@@ -382,7 +371,6 @@
       </div>
     </section>
 
-    <!-- SECTION: STATISTICS -->
     <section id="section-statistics" class="section">
       <div class="section-header"><h2 class="section-title">Statistics</h2><p class="section-sub">Your all-time performance</p></div>
       <div class="stats-grid">
@@ -398,7 +386,6 @@
       </div>
     </section>
 
-    <!-- SECTION: PROFILE -->
     <section id="section-profile" class="section">
       <div class="section-header"><h2 class="section-title">Player Profile</h2></div>
       <div class="profile-layout">
@@ -425,10 +412,8 @@
 
   </main>
 
-  <!-- ===== TOAST NOTIFICATION ===== -->
   <div class="toast" id="toast"></div>
 
-  <!-- ===== MODALS ===== -->
   <div class="modal-overlay" id="modal-overlay">
     <div class="modal" id="modal">
       <div class="modal-title" id="modal-title">Confirm</div>
