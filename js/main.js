@@ -1,11 +1,11 @@
 /**
- * main.js — Stage 1: Navigation & UI Shell
- * No game logic yet. Handles:
+ * main.js — Stage 2: Navigation, UI Shell & Game Integration
+ * Handles:
  *   - Section switching
  *   - Toast notifications
  *   - Modal dialogs
  *   - Mute button toggle (UI only)
- *   - Placeholder display values
+ *   - Slot Machine integration
  */
 
 'use strict';
@@ -105,11 +105,89 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   );
 });
 
-// ---- Spin button (placeholder — wired in Stage 2) ----
-document.getElementById('spin-btn').addEventListener('click', () => {
-  showToast('Spin logic coming in Stage 2!');
+// ---- Slot Machine Integration ----
+function initSlotMachine() {
+  // Ensure SlotMachine is available
+  if (!window.SlotMachine) {
+    console.error('SlotMachine not loaded!');
+    return;
+  }
+  
+  // Set up callbacks
+  SlotMachine.onSpinStart = (outcome, payoutResult) => {
+    // Could add screen shake or other effects here
+    if (payoutResult.winType === 'jackpot') {
+      // Pre-trigger jackpot excitement
+      document.getElementById('slot-machine').classList.add('anticipation');
+    }
+  };
+  
+  SlotMachine.onReelStop = (reelIndex, outcome) => {
+    // Could add individual reel stop sound/effect here
+    const chromeLights = document.querySelectorAll('.chrome-light');
+    if (chromeLights[reelIndex]) {
+      chromeLights[reelIndex].classList.add('on');
+      setTimeout(() => chromeLights[reelIndex].classList.remove('on'), 200);
+    }
+  };
+  
+  SlotMachine.onSpinComplete = (payoutResult) => {
+    document.getElementById('slot-machine').classList.remove('anticipation');
+    
+    // Show toast for wins
+    if (payoutResult.isWin) {
+      if (payoutResult.winType === 'jackpot') {
+        showToast('🎰 JACKPOT! ' + payoutResult.payout.toLocaleString() + ' COINS!', 4000);
+      } else {
+        showToast('WIN! ' + payoutResult.message + ' +' + payoutResult.payout.toLocaleString(), 3000);
+      }
+    }
+    
+    // Update session stats (placeholder for Stage 3)
+    updateSessionStats(payoutResult);
+  };
+  
+  // Initialize the slot machine
+  SlotMachine.init();
+}
+
+function updateSessionStats(payoutResult) {
+  // Placeholder for Stage 3 session tracking
+  const spinsEl = document.getElementById('sess-spins');
+  const winsEl = document.getElementById('sess-wins');
+  const bestEl = document.getElementById('sess-best');
+  
+  if (spinsEl) {
+    const spins = parseInt(spinsEl.textContent || '0') + 1;
+    spinsEl.textContent = spins;
+  }
+  if (payoutResult.isWin && winsEl) {
+    const wins = parseInt(winsEl.textContent || '0') + 1;
+    winsEl.textContent = wins;
+  }
+  if (payoutResult.isWin && bestEl) {
+    const best = Math.max(parseInt(bestEl.textContent || '0'), payoutResult.payout);
+    bestEl.textContent = best.toLocaleString();
+  }
+}
+
+// Keyboard support: Space to spin
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !e.target.matches('input, textarea, button')) {
+    e.preventDefault();
+    if (!SlotMachine.isSpinning) {
+      document.getElementById('spin-btn').click();
+    }
+  }
 });
 
 // ---- Init ----
 showSection('game');
 showToast('Welcome to Neon Arcade Slots!', 3000);
+
+// Initialize slot machine after DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSlotMachine);
+} else {
+  initSlotMachine();
+}

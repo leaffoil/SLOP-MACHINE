@@ -67,6 +67,21 @@
   to   { transform: rotate(360deg); }
 }
 
+/* ---- Anticipation glow (when jackpot possible) ---- */
+@keyframes anticipation-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(255,215,0,0.2), inset 0 0 40px rgba(0,0,0,0.5); }
+  50%      { box-shadow: 0 0 40px rgba(255,215,0,0.5), 0 0 80px rgba(255,215,0,0.3), inset 0 0 40px rgba(0,0,0,0.5); }
+}
+
+/* ---- Reel stopping bounce ---- */
+@keyframes reel-stop-bounce {
+  0%   { transform: translateY(var(--target-y, 0)); }
+  30%  { transform: translateY(calc(var(--target-y, 0) - 8px)); }
+  50%  { transform: translateY(calc(var(--target-y, 0) + 4px)); }
+  70%  { transform: translateY(calc(var(--target-y, 0) - 2px)); }
+  100% { transform: translateY(var(--target-y, 0)); }
+}
+
 /* ---- Apply classes ---- */
 
 .anim-reel-spin {
@@ -124,4 +139,101 @@
 }
 .spin-btn:not(:disabled) {
   animation: spin-btn-idle 2s ease-in-out infinite;
+}
+
+/* ========================================
+   STAGE 2: REEL ANIMATION STYLES
+   ======================================== */
+
+/* Reel spinning state - blur effect */
+.reel.spinning {
+  animation: reel-blur 0.1s linear infinite;
+  filter: blur(1px);
+}
+
+/* Reel container ensures smooth transforms */
+.reel {
+  will-change: transform;
+  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Winning symbol highlight */
+.symbol-slot.winning {
+  background: rgba(255,215,0,0.15);
+  box-shadow: 0 0 20px var(--gold-glow), inset 0 0 20px rgba(255,215,0,0.1);
+  animation: win-flash 0.5s ease-in-out 3;
+}
+
+/* Last result winning highlight */
+.last-sym-box.winning {
+  border-color: var(--gold);
+  box-shadow: 0 0 12px var(--gold-glow);
+  background: rgba(255,215,0,0.1);
+}
+
+/* Jackpot machine glow */
+.slot-machine.jackpot {
+  animation: jackpot-pulse 0.5s ease-in-out 6;
+  border-color: var(--red);
+}
+
+/* Anticipation state (when wilds are landing) */
+.slot-machine.anticipation {
+  animation: anticipation-glow 0.3s ease-in-out infinite;
+}
+
+/* Chrome light active state */
+.chrome-light.on {
+  opacity: 1;
+  box-shadow: 0 0 15px var(--gold), 0 0 30px var(--gold-glow);
+  transform: scale(1.2);
+  transition: all 0.15s ease-out;
+}
+
+/* Spin button disabled state */
+.spin-btn:disabled {
+  animation: none !important;
+}
+.spin-btn.spinning {
+  animation: none !important;
+  background: linear-gradient(135deg, #666, #888, #666);
+  box-shadow: 0 0 10px rgba(255,215,0,0.1);
+}
+
+/* Win line active */
+.win-line.active {
+  animation: light-twinkle 0.5s ease-in-out infinite;
+}
+
+/* ========================================
+   RESPONSIVE ANIMATION ADJUSTMENTS
+   ======================================== */
+@media (max-width: 600px) {
+  .reel.spinning {
+    animation: reel-blur 0.08s linear infinite;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .reel.spinning,
+  .anim-reel-spin,
+  .anim-win-flash,
+  .anim-jackpot-pulse,
+  .anim-screen-shake,
+  .anim-level-up-pop,
+  .coin-particle,
+  .chrome-light,
+  .spin-btn:not(:disabled),
+  .win-line.active,
+  .slot-machine.jackpot,
+  .slot-machine.anticipation,
+  .symbol-slot.winning,
+  .anim-payout-count {
+    animation: none !important;
+    transition: none !important;
+  }
+  .reel {
+    transition: none !important;
+  }
 }
