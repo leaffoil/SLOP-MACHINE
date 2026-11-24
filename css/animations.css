@@ -14,6 +14,14 @@
   30%, 70%  { filter: blur(2px); }
 }
 
+/* ---- Reel settle bounce (after deceleration) ---- */
+@keyframes reel-settle {
+  0%, 100% { transform: translateY(var(--target-y)); }
+  25%      { transform: translateY(calc(var(--target-y) - 12px)); }
+  50%      { transform: translateY(calc(var(--target-y) + 8px)); }
+  75%      { transform: translateY(calc(var(--target-y) - 4px)); }
+}
+
 /* ---- Win flash ---- */
 @keyframes win-flash {
   0%, 100% { opacity: 1; }
@@ -149,6 +157,12 @@
 .reel.spinning {
   animation: reel-blur 0.1s linear infinite;
   filter: blur(1px);
+}
+
+/* Reel settling after stop (bounce effect) */
+.reel.settling {
+  animation: reel-settle 0.4s ease-out forwards;
+  filter: blur(0.5px);
 }
 
 /* Reel container ensures smooth transforms */

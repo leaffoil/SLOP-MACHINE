@@ -220,13 +220,24 @@ const PayoutCalculator = {
 const ReelAnimator = {
   // Animation constants
   SYMBOL_HEIGHT: 94, // symbol-slot height (90px) + gap (4px)
-  SPIN_DURATION_BASE: 1000, // base duration per reel in ms
-  SPIN_DURATION_VARIANCE: 400, // additional random time
-  STOP_DELAY: 400, // delay between reel stops
+  SPIN_DURATION_BASE: 1200, // base duration per reel in ms
+  SPIN_DURATION_VARIANCE: 500, // additional random time
+  STOP_DELAY: 500, // delay between reel stops
   
   // State
   isAnimating: false,
   animationPromises: [],
+  activeReels: {}, // Track per-reel animation state
+  
+  // Animation phases per reel
+  PHASE: {
+    ACCELERATING: 'accelerating',
+    SPINNING: 'spinning',
+    DECELERATING: 'decelerating',
+    STOPPING: 'stopping',
+    SETTLING: 'settling',
+    DONE: 'done'
+  },
   
   /**
    * Create symbol slot element
@@ -240,16 +251,13 @@ const ReelAnimator = {
   },
   
   /**
-   * Populate a reel with symbols for animation
-   * Creates a long strip of symbols that will scroll
+   * Populate a reel with symbols for continuous animation
    */
   prepareReel(reelElement, outcome, reelIndex) {
     // Clear existing content
     reelElement.innerHTML = '';
     
-    // We need enough symbols to spin through
     // Create: 3 buffer symbols (above) + 3 outcome symbols + 3 buffer symbols (below)
-    // Actually, let's create a longer strip for smoother animation
     const stripSymbols = [];
     
     // Add 5 random symbols above
@@ -271,61 +279,132 @@ const ReelAnimator = {
       reelElement.appendChild(el);
     });
     
-    // Initial position: start with first buffer symbol at top
-    // The middle outcome symbol (index 5+1=6) should end up in the viewport center
-    const initialOffset = -(5 * this.SYMBOL_HEIGHT); // 5 buffer symbols above
+    // Set initial position - start with first buffer symbol at top
+    const initialOffset = -(5 * this.SYMBOL_HEIGHT);
     reelElement.style.transform = `translateY(${initialOffset}px)`;
-    reelElement.style.transition = 'none';
-    
-    // Force reflow
-    reelElement.offsetHeight;
     
     return {
       totalSymbols: stripSymbols.length,
+      stripLength: stripSymbols.length * this.SYMBOL_HEIGHT,
       targetIndex: 6, // index of middle outcome symbol in strip
       targetOffset: -(6 * this.SYMBOL_HEIGHT)
     };
   },
   
   /**
-   * Animate a single reel to its target position
+   * Continuous animation loop using requestAnimationFrame
    */
-  animateReel(reelElement, reelIndex, outcome, onComplete) {
-    const duration = this.SPIN_DURATION_BASE + Math.random() * this.SPIN_DURATION_VARIANCE;
-    const delay = reelIndex * this.STOP_DELAY;
+  animateReel(reelElement, reelIndex, reelInfo, onComplete) {
+    const state = {
+      phase: this.PHASE.ACCELERATING,
+      scrollY: -(5 * this.SYMBOL_HEIGHT), // Start at top
+      speed: 0,
+      maxSpeed: 3.5, // pixels per frame
+      decelerationStart: null,
+      startTime: performance.now(),
+      rafId: null
+    };
     
-    const reelInfo = this.prepareReel(reelElement, outcome, reelIndex);
+    this.activeReels[reelIndex] = state;
     
-    // Add spinning class for blur effect
-    reelElement.classList.add('spinning');
+    const self = this;
     
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Enable transition
-        reelElement.style.transition = `transform ${duration}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
-        
-        // Move to target position
-        reelElement.style.transform = `translateY(${reelInfo.targetOffset}px)`;
-        
-        // Handle transition end
-        const onTransitionEnd = () => {
-          reelElement.removeEventListener('transitionend', onTransitionEnd);
-          reelElement.classList.remove('spinning');
-          reelElement.style.transition = 'none';
+    function animateLoop() {
+      const now = performance.now();
+      const elapsed = now - state.startTime;
+      const stripLength = reelInfo.stripLength;
+      
+      switch (state.phase) {
+        case self.PHASE.ACCELERATING:
+          // Accelerate over ~600ms
+          const accelProgress = Math.min(elapsed / 600, 1);
+          state.speed = state.maxSpeed * accelProgress * accelProgress;
+          if (accelProgress >= 1) {
+            state.phase = self.PHASE.SPINNING;
+          }
+          break;
           
-          // Snap to exact position (in case of floating point issues)
-          reelElement.style.transform = `translateY(${reelInfo.targetOffset}px)`;
+        case self.PHASE.SPINNING:
+          state.speed = state.maxSpeed + Math.random() * 0.5;
+          break;
           
-          if (onComplete) onComplete(reelIndex);
-          resolve();
-        };
+        case self.PHASE.DECELERATING:
+          // Decelerate over ~500ms
+          const decelProgress = Math.min((elapsed - state.decelerationStart) / 500, 1);
+          state.speed = state.maxSpeed * (1 - decelProgress) * (1 - decelProgress);
+          if (decelProgress >= 1) {
+            state.phase = self.PHASE.STOPPING;
+            state.decelerationStart = now;
+          }
+          break;
+          
+        case self.PHASE.STOPPING:
+          // Slight settling movement before final stop
+          const stopProgress = Math.min((elapsed - state.decelerationStart) / 200, 1);
+          state.speed = Math.max(0, state.speed - 0.5);
+          if (stopProgress >= 1 && state.speed <= 0) {
+            state.phase = self.PHASE.SETTLING;
+            state.decelerationStart = now;
+          }
+          break;
+          
+        case self.PHASE.SETTLING:
+          // Final settling: gentle bounce to target
+          const settleProgress = Math.min((elapsed - state.decelerationStart) / 300, 1);
+          // Create a gentle bounce by using ease-out with slight overshoot
+          const easeOut = 1 - Math.pow(1 - settleProgress, 3);
+          const offset = easeOut * 15 * Math.sin(settleProgress * Math.PI * 3);
+          // Snap to target
+          state.scrollY = reelInfo.targetOffset + offset;
+          
+          if (settleProgress >= 1) {
+            state.scrollY = reelInfo.targetOffset;
+            state.phase = self.PHASE.DONE;
+            state.rafId = null;
+            
+            // Clean up
+            reelElement.classList.remove('spinning');
+            delete self.activeReels[reelIndex];
+            
+            if (onComplete) onComplete(reelIndex);
+            return;
+          }
+          break;
+      }
+      
+      // Apply continuous movement
+      if (state.phase === self.PHASE.ACCELERATING || state.phase === self.PHASE.SPINNING) {
+        state.scrollY += state.speed;
         
-        reelElement.addEventListener('transitionend', onTransitionEnd);
-        
-        // Fallback in case transitionend doesn't fire
-        setTimeout(onTransitionEnd, duration + 100);
-      }, delay);
-    });
+        // Wrap around continuously
+        if (state.scrollY > 0) {
+          state.scrollY -= stripLength;
+        }
+      }
+      
+      // Apply transform
+      reelElement.style.transform = `translateY(${state.scrollY}px)`;
+      
+      // Request next frame
+      state.rafId = requestAnimationFrame(animateLoop);
+    }
+    
+    // Start the loop
+    state.rafId = requestAnimationFrame(animateLoop);
+  },
+  
+  /**
+   * Stop a specific reel (begin deceleration)
+   */
+  stopReel(reelIndex) {
+    const state = this.activeReels[reelIndex];
+    if (!state) return;
+    
+    // Transition to deceleration
+    if (state.phase === this.PHASE.SPINNING) {
+      state.phase = this.PHASE.DECELERATING;
+      state.decelerationStart = performance.now();
+    }
   },
   
   /**
@@ -336,6 +415,7 @@ const ReelAnimator = {
     
     this.isAnimating = true;
     this.animationPromises = [];
+    this.activeReels = {};
     
     const reelElements = [
       document.getElementById('reel-0'),
@@ -343,12 +423,38 @@ const ReelAnimator = {
       document.getElementById('reel-2')
     ];
     
-    // Animate each reel
-    const promises = reelElements.map((reel, index) => 
-      this.animateReel(reel, index, outcome, onReelStop)
+    // Prepare each reel (generate outline for animation)
+    const reelInfos = reelElements.map((el, index) => 
+      this.prepareReel(el, outcome, index)
     );
     
+    // Add spinning class to all reels
+    reelElements.forEach(el => el.classList.add('spinning'));
+    
+    // Start all reels with small delay between starts for visual effect
+    const promises = reelElements.map((reel, index) => {
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          this.animateReel(reel, index, reelInfos[index], resolve);
+        }, index * 50); // Small stagger between reel starts
+      });
+    });
+    
     this.animationPromises = promises;
+    
+    // Add sequential stopping logic
+    let stopIndex = 0;
+    const stopSequence = () => {
+      if (stopIndex < reelElements.length && this.activeReels[stopIndex]) {
+        this.stopReel(stopIndex);
+        // Wait for this reel to fully stop before stopping next
+        this.animationPromises[stopIndex].then(() => {
+          stopIndex++;
+          stopSequence();
+        });
+      }
+    };
+    setTimeout(stopSequence, 1500); // Let all reels spin first
     
     try {
       await Promise.all(promises);
@@ -368,11 +474,19 @@ const ReelAnimator = {
       document.getElementById('reel-2')
     ];
     
-    reelElements.forEach(reel => {
-      reel.classList.remove('spinning');
-      reel.style.transition = 'none';
+    // Cancel all animation frames
+    Object.keys(this.activeReels).forEach(idx => {
+      const state = this.activeReels[idx];
+      if (state && state.rafId) {
+        cancelAnimationFrame(state.rafId);
+      }
     });
     
+    reelElements.forEach(reel => {
+      reel.classList.remove('spinning');
+    });
+    
+    this.activeReels = {};
     this.isAnimating = false;
     this.animationPromises = [];
   }
@@ -423,21 +537,35 @@ const SlotMachine = {
   async handleSpin() {
     if (this.isSpinning) return;
     
+    // Check economy affordability if available
+    if (window.Economy) {
+      if (!window.Economy.canAfford(this.currentBet)) {
+        console.log('Cannot afford spin:', this.currentBet, '>', window.Economy.balance);
+        return;
+      }
+      // Begin spin - deduct bet (Stage 3 integration)
+      const deducted = window.Economy.beginSpin(this.currentBet);
+      if (!deducted) {
+        console.log('beginSpin failed');
+        return;
+      }
+    }
+    
     this.isSpinning = true;
     this.setSpinButtonState(true);
     
     // Clear previous result display
     this.clearResultDisplay();
     
-    // Generate outcome BEFORE animation
+    // Generate outcome BEFORE animation (determinism)
     const outcome = OutcomeGenerator.generateOutcome();
     this.lastOutcome = outcome;
     
-    // Calculate payout immediately (but don't display yet)
+    // Calculate payout immediately (don't display yet)
     const payoutResult = PayoutCalculator.evaluate(outcome, this.currentBet);
     this.lastPayoutResult = payoutResult;
     
-    // Trigger spin start callback
+    // Trigger spin start callback (economy deduction happens here as safety net)
     if (this.onSpinStart) this.onSpinStart(outcome, payoutResult);
     
     // Animate reels
@@ -454,11 +582,63 @@ const SlotMachine = {
       if (this.onSpinComplete) this.onSpinComplete(payoutResult);
       
     } catch (error) {
-      console.error('Spin error:', error);
+      this.handleError(error);
     } finally {
       this.isSpinning = false;
       this.setSpinButtonState(false);
+      
+      // Re-enable bet controls
+      this.updateBetControlsState();
     }
+  },
+  
+  /**
+   * Handle spin errors safely
+   */
+  handleError(error) {
+    console.error('Spin error:', error);
+    
+    if (error && error.type === 'spin-error' && window.Economy) {
+      // Refund if spin was not completed (Stage 3 safety)
+      window.Economy.refundSpin();
+    }
+    
+    // Show error message in UI
+    const resultText = document.getElementById('result-text');
+    if (resultText) {
+      resultText.textContent = 'ERROR - RESETTING';
+      resultText.className = 'result-text';
+      setTimeout(() => {
+        resultText.textContent = 'PRESS SPIN TO PLAY';
+      }, 2000);
+    }
+  },
+  
+  /**
+   * Stop all reels (for STOP button)
+   */
+  stopAllReels() {
+    ReelAnimator.stopAll();
+    // Note: if a spin is in progress, let it finish gracefully
+    // The isSpinning flag will be cleared when the animation completes
+    if (window.Economy && window.Economy.hasPendingSpin()) {
+      // If deducation happened but animation was stopped, refund
+      // (Cannot refund while spinning - we need to let it complete first)
+      console.log('Stop requested during spin - will let it complete');
+    }
+  },
+  
+  /**
+   * Update bet controls state (disabled during spin)
+   */
+  updateBetControlsState() {
+    const controls = ['bet-up', 'bet-down', 'bet-min', 'bet-max'];
+    controls.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.disabled = this.isSpinning;
+      }
+    });
   },
   
   /**
@@ -472,6 +652,8 @@ const SlotMachine = {
     } else {
       spinBtn.classList.remove('spinning');
     }
+    // Block bet controls during spin
+    this.updateBetControlsState();
   },
   
   /**

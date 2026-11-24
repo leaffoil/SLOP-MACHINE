@@ -113,17 +113,35 @@ function initSlotMachine() {
     return;
   }
   
+  // Wire spin button with economy integration (Stage 3)
+  document.getElementById('spin-btn').addEventListener('click', handleSpinClick);
+  
+  // Wire STOP button
+  const stopBtn = document.getElementById('stop-btn');
+  if (stopBtn) {
+    stopBtn.addEventListener('click', handleStopClick);
+  }
+  
+  // Wire bet controls (Stage 3 integration)
+  ['bet-up', 'bet-down', 'bet-min', 'bet-max'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      btn.addEventListener('click', handleBetControlClick(id));
+    }
+  });
+  
   // Set up callbacks
   SlotMachine.onSpinStart = (outcome, payoutResult) => {
-    // Could add screen shake or other effects here
     if (payoutResult.winType === 'jackpot') {
-      // Pre-trigger jackpot excitement
       document.getElementById('slot-machine').classList.add('anticipation');
+    }
+    // Wire to economy - bet deduction happens here (Stage 3)
+    if (window.Economy) {
+      window.Economy.beginSpin(SlotMachine.currentBet);
     }
   };
   
   SlotMachine.onReelStop = (reelIndex, outcome) => {
-    // Could add individual reel stop sound/effect here
     const chromeLights = document.querySelectorAll('.chrome-light');
     if (chromeLights[reelIndex]) {
       chromeLights[reelIndex].classList.add('on');
@@ -134,7 +152,6 @@ function initSlotMachine() {
   SlotMachine.onSpinComplete = (payoutResult) => {
     document.getElementById('slot-machine').classList.remove('anticipation');
     
-    // Show toast for wins
     if (payoutResult.isWin) {
       if (payoutResult.winType === 'jackpot') {
         showToast('🎰 JACKPOT! ' + payoutResult.payout.toLocaleString() + ' COINS!', 4000);
@@ -143,12 +160,185 @@ function initSlotMachine() {
       }
     }
     
-    // Update session stats (placeholder for Stage 3)
-    updateSessionStats(payoutResult);
+    // Update session stats via Economy (Stage 3)
+    if (window.Economy) {
+      window.Economy.completeSpin(payoutResult);
+    } else {
+      updateSessionStats(payoutResult);
+    }
+    
+    // Update STOP button visibility
+    updateAutoStopUI();
+  };
+  
+  // Handle errors
+  SlotMachine.onError = (error) => {
+    console.error('Spin error:', error);
+    if (window.Economy && error.type === 'spin-error' && window.Economy.hasPendingSpin()) {
+      window.Economy.refundSpin();
+    }
   };
   
   // Initialize the slot machine
   SlotMachine.init();
+  
+  // Update initial balance display
+  if (window.Economy) {
+    window.Economy.updateBalanceDisplay();
+    window.Economy.updateStatsDisplay();
+  }
+}
+
+// Handlers for click events with economy integration
+function handleSpinClick() {
+  if (!window.Economy || window.Economy.hasPendingSpin()) {
+    // Allow spinning if economy isn't loaded or already spinning
+    if (!window.Economy) {
+      SlotMachine.handleSpin();
+    }
+    return;
+  }
+  
+  // Check affordability before spinning
+  const bet = SlotMachine.currentBet;
+  if (!window.Economy.canAfford(bet)) {
+    showToast('Insufficient funds for this bet', 2000);
+    return;
+  }
+  
+  SlotMachine.handleSpin();
+}
+
+function handleStopClick() {
+  // Stop both spinning and auto-spin
+  SlotMachine.stopAllReels();
+}
+
+function handleBetControlClick(controlId) {
+  if (!window.Economy || SlotMachine.isSpinning) {
+    return; // Block bet changes during spin
+  }
+  
+  if (window.Economy && window.Economy.hasPendingSpin()) {
+    return; // Block bet changes during active spin transaction
+  }
+  
+  const currentBet = SlotMachine.currentBet;
+  let newBet;
+  
+  switch (controlId) {
+    case 'bet-up':
+      newBet = currentBet + 10;
+      break;
+    case 'bet-down':
+      newBet = currentBet - 10;
+      break;
+    case 'bet-min':
+      newBet = 10;
+      break;
+    case 'bet-max':
+      newBet = 100;
+      break;
+    default:
+      return;
+  }
+  
+  if (window.Economy) {
+    newBet = window.Economy.clampBet(newBet);
+  }
+  
+  SlotMachine.setBet(newBet);
+}
+
+// Auto-spin management
+let autoSpinTimer = null;
+let autoSpinActive = false;
+let autoSpinsRemaining = 10;
+
+function startAutoSpin() {
+  if (autoSpinActive || SlotMachine.isSpinning) return;
+  
+  const spinCountEl = document.getElementById('auto-amount');
+  const spins = parseInt(spinCountEl?.textContent || '10');
+  
+  if (!window.Economy || !window.Economy.canAfford(SlotMachine.currentBet) && spins > 0) {
+    showToast('Insufficient funds to start auto-spin', 2000);
+    return;
+  }
+  
+  autoSpinActive = true;
+  autoSpinsRemaining = spins;
+  autoSpinTimer = setInterval(() => {
+    if (!SlotMachine.isSpinning && autoSpinsRemaining > 0) {
+      if (window.Economy && !window.Economy.canAfford(SlotMachine.currentBet)) {
+        stopAutoSpin('Funds insufficient for further spins');
+        return;
+      }
+      SlotMachine.handleSpin();
+      autoSpinsRemaining--;
+      
+      if (autoSpinsRemaining <= 0) {
+        stopAutoSpin('Auto-spin complete');
+      } else {
+        updateAutoDisplay();
+      }
+    }
+  }, 3000); // 3-second interval
+  
+  updateAutoStopUI();
+}
+
+function stopAutoSpin(message) {
+  if (autoSpinTimer) {
+    clearInterval(autoSpinTimer);
+    autoSpinTimer = null;
+  }
+  autoSpinActive = false;
+  autoSpinsRemaining = 0;
+  updateAutoStopUI();
+  if (message) showToast(message, 2000);
+}
+
+function updateAutoDisplay() {
+  const el = document.getElementById('auto-amount');
+  if (el) el.textContent = autoSpinsRemaining;
+}
+
+function updateAutoStopUI() {
+  const stopBtn = document.getElementById('stop-btn');
+  if (stopBtn) {
+    stopBtn.style.display = (autoSpinActive || SlotMachine.isSpinning) ? 'inline-flex' : 'none';
+  }
+}
+
+// Wire up AUTO button
+const autoBtn = document.getElementById('auto-btn');
+if (autoBtn) {
+  autoBtn.addEventListener('click', startAutoSpin);
+}
+
+// Wire up auto +/- buttons
+const autoUp = document.getElementById('auto-up');
+const autoDown = document.getElementById('auto-down');
+const autoAmount = document.getElementById('auto-amount');
+
+if (autoUp) {
+  autoUp.addEventListener('click', () => {
+    if (autoAmount) {
+      const val = Math.min(50, parseInt(autoAmount.textContent) + 5);
+      autoAmount.textContent = val;
+      autoSpinsRemaining = val;
+    }
+  });
+}
+if (autoDown) {
+  autoDown.addEventListener('click', () => {
+    if (autoAmount) {
+      const val = Math.max(5, parseInt(autoAmount.textContent) - 5);
+      autoAmount.textContent = val;
+      autoSpinsRemaining = val;
+    }
+  });
 }
 
 function updateSessionStats(payoutResult) {
