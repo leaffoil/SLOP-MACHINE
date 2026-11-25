@@ -231,7 +231,7 @@ const ReelAnimator = {
   // Performance settings
   MAX_SPEED: 8, // pixels per frame
   ACCEL_SPEED_FACTOR: 2.5, // speed curve exponent
-  TARGET_OFFSET_BUFFER: 10, // pixels offset to center middle symbol
+  WINDOW_CENTER: 55, // Center of .reel-window (110px / 2)
   
   // State
   isAnimating: false,
@@ -278,10 +278,11 @@ const ReelAnimator = {
     // Use SYMBOL_HEIGHT (94) for accurate strip calculation
     const stripLength = stripSymbols.length * this.SYMBOL_HEIGHT;
     
-    // Calculate target offset to center middle outcome symbol (index 6)
-    // Viewport center is ~55px, symbol center is at SYMBOL_VISIBLE_HEIGHT/2
-    const middleSymbolTop = 6 * this.SYMBOL_HEIGHT;
-    const targetOffset = -(middleSymbolTop + this.TARGET_OFFSET_BUFFER - 55);
+    // Calculate target offset to center the middle outcome symbol (index 6)
+    // Math: scrollY + (6 * SYMBOL_HEIGHT) + (SYMBOL_HEIGHT/2) = WINDOW_CENTER
+    // Solve: scrollY = WINDOW_CENTER - 6*SYMBOL_HEIGHT - SYMBOL_HEIGHT/2
+    const symbolIndex = 6; // Middle outcome symbol position in strip
+    const targetOffset = -(symbolIndex * this.SYMBOL_HEIGHT + this.SYMBOL_HEIGHT / 2 - this.WINDOW_CENTER);
     
     reelElement.style.transform = `translateY(${-(5 * this.SYMBOL_HEIGHT)}px)`;
     
