@@ -81,6 +81,18 @@ const Economy = {
   },
 
   /**
+   * Add coins to the balance (used by Stage 4 progression level-up rewards).
+   * Stage 4 rewards are virtual coins only — never negative, no real money.
+   */
+  addBalance(amount) {
+    const n = Number(amount);
+    if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return 0;
+    this.balance += n;
+    this.updateBalanceDisplay();
+    return n;
+  },
+
+  /**
    * Clamp a requested bet to [MIN_BET, MAX_BET] and available balance.
    * If balance is below MIN_BET, returns MIN_BET (canAfford will be false).
    */

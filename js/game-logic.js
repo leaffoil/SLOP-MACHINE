@@ -502,6 +502,7 @@ const SlotMachine = {
   currentBet: 10,
   lastOutcome: null,
   lastPayoutResult: null,
+  spinSerial: 0, // Stage 4: unique token per completed spin (dedup guard for progression)
   
   // Callbacks
   onSpinStart: null,
@@ -536,7 +537,10 @@ const SlotMachine = {
    */
   async handleSpin() {
     if (this.isSpinning) return;
-    
+
+    // Stage 4: per-spin token (prevents duplicate progression awards)
+    this.spinSerial += 1;
+
     // Check economy affordability if available
     if (window.Economy) {
       if (!window.Economy.canAfford(this.currentBet)) {
@@ -579,7 +583,8 @@ const SlotMachine = {
       this.updateLastResultDisplay(outcome);
       this.highlightWinningSymbols(payoutResult);
       
-      if (this.onSpinComplete) this.onSpinComplete(payoutResult);
+      // Stage 4: spinSerial passed for progression dedup
+      if (this.onSpinComplete) this.onSpinComplete(payoutResult, this.spinSerial);
       
     } catch (error) {
       this.handleError(error);

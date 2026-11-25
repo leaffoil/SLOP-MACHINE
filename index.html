@@ -310,27 +310,31 @@
       </div>
       <div class="collection-grid" id="collection-grid">
 
-        <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Cherry</div></div>
-        <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Lemon</div></div>
-        <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Watermelon</div></div>
-        <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Diamond</div></div>
-        <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Star</div></div>
-        <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Lucky Seven</div></div>
-        <div class="collect-card locked-card"><div class="collect-icon">?</div><div class="collect-name">Wild</div></div>
+        <div class="collect-card locked-card" data-symbol="cherry"><div class="collect-icon">?</div><div class="collect-name">Cherry</div></div>
+        <div class="collect-card locked-card" data-symbol="lemon"><div class="collect-icon">?</div><div class="collect-name">Lemon</div></div>
+        <div class="collect-card locked-card" data-symbol="watermelon"><div class="collect-icon">?</div><div class="collect-name">Watermelon</div></div>
+        <div class="collect-card locked-card" data-symbol="diamond"><div class="collect-icon">?</div><div class="collect-name">Diamond</div></div>
+        <div class="collect-card locked-card" data-symbol="star"><div class="collect-icon">?</div><div class="collect-name">Star</div></div>
+        <div class="collect-card locked-card" data-symbol="seven"><div class="collect-icon">?</div><div class="collect-name">Lucky Seven</div></div>
+        <div class="collect-card locked-card" data-symbol="wild"><div class="collect-icon">?</div><div class="collect-name">Wild</div></div>
+      </div>
+      <div class="collection-cosmetic" id="collection-cosmetic">
+        <span class="collection-cosmetic-label">COLLECTION COMPLETE</span>
+        <span class="collection-cosmetic-text" id="collection-cosmetic-text"></span>
       </div>
     </section>
 
     <section id="section-achievements" class="section">
       <div class="section-header"><h2 class="section-title">Achievements</h2><p class="section-sub">Milestones earned through gameplay</p></div>
       <div class="achievements-grid" id="achievements-grid">
-        <div class="achieve-card locked-achieve"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">First Spin</div><div class="achieve-desc">Complete your first spin</div></div></div>
-        <div class="achieve-card locked-achieve"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">First Win</div><div class="achieve-desc">Win your first payout</div></div></div>
-        <div class="achieve-card locked-achieve"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">10 Spins</div><div class="achieve-desc">Complete 10 total spins</div></div></div>
-        <div class="achieve-card locked-achieve"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">100 Spins</div><div class="achieve-desc">Complete 100 total spins</div></div></div>
-        <div class="achieve-card locked-achieve"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">First Jackpot</div><div class="achieve-desc">Hit the Wild jackpot</div></div></div>
-        <div class="achieve-card locked-achieve"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">Collector</div><div class="achieve-desc">Collect all 7 symbols</div></div></div>
-        <div class="achieve-card locked-achieve"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">Level 10</div><div class="achieve-desc">Reach player level 10</div></div></div>
-        <div class="achieve-card locked-achieve"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">Prestige I</div><div class="achieve-desc">Reach your first prestige</div></div></div>
+        <div class="achieve-card locked-achieve" data-achievement="first_spin"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">First Spin</div><div class="achieve-desc">Complete your first spin</div></div></div>
+        <div class="achieve-card locked-achieve" data-achievement="first_win"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">First Win</div><div class="achieve-desc">Win your first payout</div></div></div>
+        <div class="achieve-card locked-achieve" data-achievement="getting_started"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">Getting Started</div><div class="achieve-desc">Complete 10 spins</div></div></div>
+        <div class="achieve-card locked-achieve" data-achievement="dedicated_player"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">Dedicated Player</div><div class="achieve-desc">Complete 100 spins</div></div></div>
+        <div class="achieve-card locked-achieve" data-achievement="jackpot"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">First Jackpot</div><div class="achieve-desc">Hit the Wild jackpot</div></div></div>
+        <div class="achieve-card locked-achieve" data-achievement="collector"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">Collector</div><div class="achieve-desc">Collect all 7 symbols</div></div></div>
+        <div class="achieve-card locked-achieve" data-achievement="level_10"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">Level 10</div><div class="achieve-desc">Reach player level 10</div></div></div>
+        <div class="achieve-card locked-achieve" data-achievement="prestige_i"><div class="achieve-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="#555" stroke-width="2"/><path d="M10 16l4 4 8-8" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg></div><div class="achieve-info"><div class="achieve-name">Prestige I</div><div class="achieve-desc">Reach your first prestige</div></div></div>
       </div>
     </section>
 
@@ -430,5 +434,6 @@
   <script src="js/game-logic.js"></script>
   <script src="js/economy.js"></script>
   <script src="js/main.js"></script>
+  <script src="js/progression.js"></script>
 </body>
 </html>

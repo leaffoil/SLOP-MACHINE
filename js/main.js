@@ -149,9 +149,14 @@ function initSlotMachine() {
     }
   };
   
-  SlotMachine.onSpinComplete = (payoutResult) => {
+  SlotMachine.onSpinComplete = (payoutResult, spinSerial) => {
     document.getElementById('slot-machine').classList.remove('anticipation');
-    
+
+    // Stage 4: progression events (XP, levels, achievements, collections)
+    if (window.Progression) {
+      window.Progression.onSpinComplete(payoutResult, SlotMachine.lastOutcome, spinSerial);
+    }
+
     if (payoutResult.isWin) {
       if (payoutResult.winType === 'jackpot') {
         showToast('🎰 JACKPOT! ' + payoutResult.payout.toLocaleString() + ' COINS!', 4000);

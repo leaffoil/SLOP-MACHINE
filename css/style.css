@@ -668,9 +668,35 @@ html, body {
 }
 .collect-card:hover { box-shadow: var(--shadow-gold); }
 .collect-card.locked-card { border-color: var(--border); opacity: 0.4; }
+.collect-card.unlocked-card { border-color: var(--green); }
+.collect-card.unlocked-card:hover { box-shadow: 0 0 12px rgba(46,204,113,0.35); }
 .collect-icon { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--text-dim); }
 .collect-icon svg { width: 100%; height: 100%; }
+.collect-icon.collected { color: var(--green); }
 .collect-name { font-size: 0.72rem; letter-spacing: 1px; color: var(--text-muted); text-transform: uppercase; text-align: center; }
+
+/* Cosmetic reward banner for full collection */
+.collection-cosmetic {
+  display: none;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  max-width: 500px;
+  margin: 0 auto 24px;
+  padding: 12px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.collection-cosmetic.unlocked {
+  display: flex;
+  border-color: var(--gold);
+  background: linear-gradient(135deg, var(--bg-card), rgba(255,215,0,0.05));
+}
+.collection-cosmetic-label { font-size: 0.65rem; letter-spacing: 2px; color: var(--text-dim); }
+.collection-cosmetic.unlocked .collection-cosmetic-label { color: var(--gold); }
+.collection-cosmetic-text { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); }
+.collection-cosmetic.unlocked .collection-cosmetic-text { color: var(--gold); text-shadow: 0 0 8px var(--gold-glow); }
 
 /* ========================================
    ACHIEVEMENTS SECTION
@@ -702,6 +728,20 @@ html, body {
 .achieve-icon svg { width: 100%; height: 100%; }
 .achieve-name { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin-bottom: 3px; }
 .achieve-desc { font-size: 0.72rem; color: var(--text-muted); }
+/* Achieve progress indicators (numerical achievements) */
+.achieve-progress { margin-top: 8px; }
+.achieve-progress-fill {
+  height: 5px;
+  background: linear-gradient(90deg, var(--gold), var(--neon));
+  border-radius: 100px;
+  transition: width 0.3s ease;
+}
+.achieve-progress-count {
+  display: block;
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
 
 /* ========================================
    MISSIONS SECTION
