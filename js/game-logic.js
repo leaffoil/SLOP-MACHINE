@@ -219,16 +219,19 @@ const PayoutCalculator = {
 
 const ReelAnimator = {
   // Animation constants (optimized for ~2s total spin)
-  SYMBOL_HEIGHT: 94, // symbol-slot height (90px) + gap (4px)
+  SYMBOL_HEIGHT: 94, // Actual strip spacing (CSS gap 4px + symbol 90px)
+  SYMBOL_GAP: 4, // CSS gap between symbols
+  SYMBOL_VISIBLE_HEIGHT: 90, // symbol-slot CSS height
   ACCEL_DURATION: 180, // ms to accelerate from 0 to max speed
   DECEL_DURATION: 420, // ms to decelerate to stop
-  SPINNING_DURATION: 600, // ms to maintain spinning before stop is triggered
+  SPINNING_DURATION: 600, // ms to maintain spinning before auto-stop
   STOP_STAGGER: 180, // ms between sequential reel stops
-  SETTLING_DURATION: 250, // ms settling after deceleration
+  SETTLING_DURATION: 200, // ms subtle settling after stop
   
   // Performance settings
   MAX_SPEED: 8, // pixels per frame
-  ACCEL_SPEED_FACTOR: 2.5, // speed curve exponent (higher = faster accel)
+  ACCEL_SPEED_FACTOR: 2.5, // speed curve exponent
+  TARGET_OFFSET_BUFFER: 10, // pixels offset to center middle symbol
   
   // State
   isAnimating: false,
@@ -260,6 +263,7 @@ const ReelAnimator = {
    * Populate a reel with symbols for continuous animation
    */
   prepareReel(reelElement, outcome, reelIndex) {
+    // Clear existing symbols to prevent duplicates
     reelElement.innerHTML = '';
     
     const stripSymbols = [];
@@ -271,11 +275,17 @@ const ReelAnimator = {
       reelElement.appendChild(this.createSymbolElement(symbolId));
     });
     
+    // Use SYMBOL_HEIGHT (94) for accurate strip calculation
     const stripLength = stripSymbols.length * this.SYMBOL_HEIGHT;
-    const targetOffset = -554; // Centers middle outcome symbol (index 6) at viewport center
+    
+    // Calculate target offset to center middle outcome symbol (index 6)
+    // Viewport center is ~55px, symbol center is at SYMBOL_VISIBLE_HEIGHT/2
+    const middleSymbolTop = 6 * this.SYMBOL_HEIGHT;
+    const targetOffset = -(middleSymbolTop + this.TARGET_OFFSET_BUFFER - 55);
+    
     reelElement.style.transform = `translateY(${-(5 * this.SYMBOL_HEIGHT)}px)`;
     
-    return { stripLength, targetOffset, totalSymbols: stripSymbols.length };
+    return { stripLength, targetOffset, totalSymbols: stripSymbols.length, targetIndex: 6 };
   },
   
   /**
@@ -309,6 +319,11 @@ const ReelAnimator = {
           break;
           
         case self.PHASE.SPINNING:
+          // Explicit speed control during spinning phase
+          const spinT = Math.min(elapsed / 300, 1);
+          state.speed = self.MAX_SPEED * spinT;
+          
+          // Auto-stop trigger (but sequentialStop may have already triggered)
           if (!state.stopTriggered && elapsed >= self.SPINNING_DURATION) {
             self.stopReel(reelIndex);
           }
@@ -318,28 +333,27 @@ const ReelAnimator = {
           const decelElapsed = now - state.decelerationStart;
           const decelT = Math.min(decelElapsed / self.DECEL_DURATION, 1);
           state.speed = self.MAX_SPEED * (1 - Math.pow(decelT, 1.5));
-          if (decelT >= 1) state.phase = self.PHASE.STOPPING;
-          break;
-          
-        case self.PHASE.STOPPING:
-          const stopT = Math.max(0, state.speed / self.MAX_SPEED - 0.02);
-          state.speed = self.MAX_SPEED * stopT * 0.1;
-          if (state.speed <= 0.5) {
+          if (decelT >= 1) {
             state.phase = self.PHASE.SETTLING;
             state.settlingStart = now;
+            state.speed = 0; // Full stop before settle
           }
           break;
           
         case self.PHASE.SETTLING:
+          // Subtle settling: stay near target with small random wobble
           const settleElapsed = now - state.settlingStart;
           const settleT = Math.min(settleElapsed / self.SETTLING_DURATION, 1);
           
-          // Smooth settle with ease-out
-          const eased = 1 - Math.pow(1 - settleT, 3);
-          state.scrollY = targetOffset + eased * (stripLength / 20);
+          // Slight nudge towards target during settle, then hold
+          const nudge = state.nudge || 0;
+          state.nudge = Math.min(nudge + 1, 10);
+          
+          // Stay at target position during settle (no bouncing away)
+          state.scrollY = targetOffset + Math.sin(settleT * Math.PI) * 2;
           
           if (settleT >= 1) {
-            state.scrollY = targetOffset;
+            state.scrollY = targetOffset; // Exact final position
             state.phase = self.PHASE.DONE;
             state.rafId = null;
             
@@ -367,16 +381,24 @@ const ReelAnimator = {
   
   /**
    * Stop a specific reel (begin deceleration)
+   * Idempotent - safe to call multiple times
    */
   stopReel(reelIndex) {
     const state = this.activeReels[reelIndex];
-    if (!state) return;
+    if (!state || state.stopTriggered) return; // Prevent duplicate triggers
     
     state.stopTriggered = true;
+    
+    // Allow stop from ACCELERATING, SPINNING, or even DECELERATING (skip if already stopping)
     if (state.phase === this.PHASE.SPINNING) {
       state.phase = this.PHASE.DECELERATING;
       state.decelerationStart = performance.now();
+    } else if (state.phase === this.PHASE.ACCELERATING) {
+      // Transition directly to deceleration
+      state.phase = this.PHASE.DECELERATING;
+      state.decelerationStart = performance.now();
     }
+    // If already in DECELERATING, no action needed
   },
   
   /**
@@ -418,28 +440,44 @@ const ReelAnimator = {
   },
   
   /**
-   * Sequential stop: decelerate reels in order with minimal stagger
+   * Sequential stop: decelerate reels in order (0 → 1 → 2)
+   * Waits for each reel to complete before stopping the next
    */
-  sequentialStop(reelElements, outcome) {
+  sequentialStop(reelElements) {
     const self = this;
-    let stopIndex = 0;
     
-    function stopNext() {
-      if (stopIndex >= 3) return;
-      
-      const state = self.activeReels[stopIndex];
-      if (state && state.phase !== self.PHASE.DONE) {
-        self.stopReel(stopIndex);
-        stopIndex++;
-        // Stagger next stop by small amount
-        setTimeout(stopNext, self.STOP_STAGGER);
-      } else {
-        stopIndex++;
-        setTimeout(stopNext, 0);
+    const stopOne = (index) => {
+      return new Promise((resolve) => {
+        // Check if reel is active and not yet stopped
+        const state = self.activeReels[index];
+        if (!state || state.phase === self.PHASE.DONE) {
+          resolve();
+          return;
+        }
+        
+        // Stop this reel
+        self.stopReel(index);
+        
+        // Wait for this reel to complete before returning
+        const waitForCompletion = () => {
+          const s = self.activeReels[index];
+          if (!s || s.phase === self.PHASE.DONE) {
+            resolve();
+          } else {
+            setTimeout(waitForCompletion, 50);
+          }
+        };
+        setTimeout(waitForCompletion, 100); // Give it time to start stopping
+      });
+    };
+    
+    const stopAll = async () => {
+      for (let i = 0; i < 3; i++) {
+        await stopOne(i);
       }
-    }
+    };
     
-    setTimeout(stopNext, 0);
+    stopAll();
   },
   
   /**
