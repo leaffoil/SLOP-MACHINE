@@ -225,7 +225,7 @@ const ReelAnimator = {
   ACCEL_DURATION: 180, // ms to accelerate from 0 to max speed
   DECEL_DURATION: 420, // ms to decelerate to stop
   SPINNING_DURATION: 600, // ms to maintain spinning before auto-stop
-  STOP_STAGGER: 180, // ms between sequential reel stops
+  STOP_STAGGER: 300, // ms between sequential reel stops (visible gap)
   SETTLING_DURATION: 200, // ms subtle settling after stop
   
   // Performance settings
@@ -441,40 +441,48 @@ const ReelAnimator = {
   
   /**
    * Sequential stop: decelerate reels in order (0 → 1 → 2)
-   * Waits for each reel to complete before stopping the next
+   * Each reel: stop → decelerate (420ms) → settle (200ms) → delay (300ms) → next
    */
   sequentialStop(reelElements) {
     const self = this;
     
-    const stopOne = (index) => {
+    const stopOne = (index, delayMs) => {
       return new Promise((resolve) => {
-        // Check if reel is active and not yet stopped
-        const state = self.activeReels[index];
-        if (!state || state.phase === self.PHASE.DONE) {
-          resolve();
-          return;
-        }
-        
-        // Stop this reel
-        self.stopReel(index);
-        
-        // Wait for this reel to complete before returning
-        const waitForCompletion = () => {
-          const s = self.activeReels[index];
-          if (!s || s.phase === self.PHASE.DONE) {
+        setTimeout(() => {
+          const state = self.activeReels[index];
+          
+          // If reel already done, skip to next
+          if (!state || state.phase === self.PHASE.DONE) {
             resolve();
-          } else {
-            setTimeout(waitForCompletion, 50);
+            return;
           }
-        };
-        setTimeout(waitForCompletion, 100); // Give it time to start stopping
+          
+          // Stop this reel (begin deceleration)
+          self.stopReel(index);
+          
+          // Wait for this reel to fully complete (DONE phase)
+          const pollCompletion = () => {
+            const s = self.activeReels[index];
+            if (!s || s.phase === self.PHASE.DONE) {
+              resolve();
+            } else {
+              setTimeout(pollCompletion, 25);
+            }
+          };
+          setTimeout(pollCompletion, 50);
+        }, delayMs);
       });
     };
     
     const stopAll = async () => {
-      for (let i = 0; i < 3; i++) {
-        await stopOne(i);
-      }
+      // Stop reel 0 immediately
+      await stopOne(0, 0);
+      
+      // Stop reel 1 after 500ms (enough for reel 0 to be in stop phase)
+      await stopOne(1, 500);
+      
+      // Stop reel 2 after 1000ms (ensures clear sequential gap)
+      await stopOne(2, 1000);
     };
     
     stopAll();
