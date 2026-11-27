@@ -143,6 +143,9 @@
 /* Spin button: static, confident — no idle pulsing */
 .spin-btn:not(:disabled) { animation: none; }
 
+/* Small in-button activity indicator, only while a real spin runs */
+@keyframes spin-rotate { to { transform: rotate(360deg); } }
+
 /* ========================================
    STAGE 2: REEL ANIMATION STYLES
    ======================================== */
@@ -199,16 +202,8 @@
 }
 
 /* Spin button disabled state */
-.spin-btn:disabled {
-  animation: none !important;
-}
-.spin-btn.spinning {
-  animation: none !important;
-  background: var(--bg-card-alt);
-  border-color: var(--border);
-  box-shadow: none;
-  color: var(--text-dim);
-}
+.spin-btn:disabled,
+.spin-btn.spinning { animation: none !important; }
 
 /* Win line active */
 .win-line.active {

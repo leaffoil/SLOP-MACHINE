@@ -68,22 +68,26 @@
   .reel-divider { height: 90px; }
 
   .controls-panel {
+    --ctrl-h: 32px;
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'bet' 'spin' 'auto';
     justify-items: center;
-    gap: 14px;
+    gap: 16px;
     max-width: 420px;
   }
-  .bet-group { width: 100%; }
-  .bet-controls, .auto-controls { padding: 7px; }
-  .ctrl-btn { padding: 7px 9px; font-size: 0.68rem; }
-  .ctrl-btn.ctrl-step { min-width: 32px; }
-  .increment-controls { padding: 6px; gap: 4px; }
-  .increment-btn { padding: 4px 6px; font-size: 0.6rem; }
-  .increment-custom { width: 46px; font-size: 0.62rem; }
-  .increment-label { display: none; }
-  .spin-btn { width: 74px; height: 74px; margin-bottom: 0; }
-  .spin-icon { width: 19px; height: 19px; }
-  .auto-controls { width: 100%; max-width: 280px; }
+  .bet-group, .auto-group { width: 100%; }
+  .bet-controls { gap: 6px; padding: 7px; }
+  .ctrl-btn { padding: 0 9px; font-size: 0.68rem; }
+  .ctrl-btn.ctrl-limit { min-width: 40px; font-size: 0.6rem; }
+  .increment-controls { padding: 7px; gap: 6px; }
+  .increment-btn { min-width: 26px; padding: 0 5px; font-size: 0.66rem; }
+  .increment-custom { width: 62px; font-size: 0.68rem; }
+  .increment-current::before { display: none; }
+  .spin-btn { width: 76px; height: 76px; }
+  .spin-icon { width: 20px; height: 20px; }
+  .auto-controls { max-width: 280px; margin: 0 auto; }
+  .auto-group { align-items: center; }
+  .stop-btn { max-width: 280px; }
 
   .left-sidebar,
   .right-sidebar { grid-template-columns: minmax(0, 1fr); }
@@ -117,9 +121,16 @@
   .symbol-slot, .symbol-placeholder { width: 74px; height: 90px; }
   .symbol-slot svg { width: 58px; height: 58px; }
   .spin-btn { width: 68px; height: 68px; }
+  .controls-panel { gap: 12px; }
+  .bet-controls { gap: 4px; padding: 6px; }
+  .ctrl-btn { padding: 0 7px; font-size: 0.66rem; }
+  .bet-display, .auto-display { min-width: 44px; }
+  .increment-controls { gap: 4px; padding: 6px; }
   .increment-presets { gap: 2px; }
-  .increment-btn { padding: 3px 5px; }
-  .increment-custom { width: 42px; }
+  .increment-btn { min-width: 24px; padding: 0 4px; font-size: 0.62rem; }
+  .increment-custom { width: 56px; font-size: 0.64rem; }
+  .increment-apply { padding: 0 7px; }
+  .increment-current { padding: 0 7px; }
   .nav-btn { min-width: 48px; padding: 8px; }
 }
 

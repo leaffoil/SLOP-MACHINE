@@ -741,13 +741,25 @@ function testAutoSpinRegression() {
   console.log('\n=== Auto-spin regression ===');
 
   const world = createWorld(createStorage(), { withMain: true, skipInit: true });
-  const { sandbox } = world;
-  // main.js needs a Progression state for machine/mission wiring
-  sandbox.Progression.init();
+  const { sandbox, document } = world;
+  // Fire DOMContentLoaded so main.js wires the STOP button handler
+  document.dispatch('DOMContentLoaded', {});
 
-  const stopBtn = world.document.getElementById('stop-btn');
+  const stopBtn = document.getElementById('stop-btn');
   sandbox.startAutoSpin();
   eq('Auto-spin shows the STOP button', stopBtn.style.display, 'inline-flex');
+
+  // STOP button must interrupt auto-spin (not just stop the reels)
+  stopBtn.click();
+  eq('STOP button hides itself', stopBtn.style.display, 'none');
+  eq('STOP button allows a fresh auto-spin start', (() => {
+    sandbox.startAutoSpin();
+    const started = stopBtn.style.display === 'inline-flex';
+    sandbox.stopAutoSpin('');
+    return started;
+  })(), true);
+
+  sandbox.startAutoSpin();
   sandbox.stopAutoSpin('');
   eq('Auto-spin hides the STOP button when stopped', stopBtn.style.display, 'none');
 }

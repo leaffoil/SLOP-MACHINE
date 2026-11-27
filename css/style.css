@@ -603,21 +603,26 @@ html, body {
 }
 
 /* ========================================
-   CONTROLS PANEL — one coherent component
+   CONTROLS PANEL — three clearly bounded zones
+   BET module | SPIN | AUTO/STOP module
    ======================================== */
 .controls-panel {
+  --ctrl-h: 34px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: end;
-  gap: 18px;
+  grid-template-areas: 'bet spin auto';
+  align-items: center;
+  gap: 24px;
   width: 100%;
-  max-width: 520px;
+  max-width: 660px;
+  margin: 0 auto;
 }
 
+/* Shared control surface */
 .bet-controls, .auto-controls {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -625,27 +630,44 @@ html, body {
   box-shadow: var(--shadow-card);
 }
 
-.ctrl-btn {
+/* Shared button rules — one design system for every control button */
+.ctrl-btn, .increment-btn, .increment-apply {
+  height: var(--ctrl-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  padding: 8px 11px;
+  color: var(--text-secondary);
+  padding: 0 10px;
+  font-family: inherit;
   font-size: 0.72rem;
-  letter-spacing: 0.5px;
-  cursor: pointer;
   font-weight: 600;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  cursor: pointer;
   transition: background var(--transition), border-color var(--transition),
-              color var(--transition), transform var(--transition);
+              color var(--transition), transform var(--transition), box-shadow var(--transition);
 }
-.ctrl-btn:hover:not(:disabled) {
+.ctrl-btn:hover:not(:disabled),
+.increment-btn:hover:not(:disabled):not(.active) {
   background: var(--bg-card-alt);
-  border-color: var(--border-strong);
+  border-color: var(--text-muted);
   color: var(--text-primary);
 }
-.ctrl-btn:active:not(:disabled) { transform: translateY(1px); }
-.ctrl-btn:disabled, .ctrl-btn.disabled {
-  opacity: 0.35;
+.ctrl-btn:active:not(:disabled),
+.increment-btn:active:not(:disabled),
+.increment-apply:active:not(:disabled) { transform: translateY(1px); }
+.ctrl-btn:focus-visible, .increment-btn:focus-visible,
+.increment-apply:focus-visible, .increment-custom:focus-visible,
+.spin-btn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.ctrl-btn:disabled, .ctrl-btn.disabled,
+.increment-btn:disabled {
+  opacity: 0.32;
   cursor: not-allowed;
   background: transparent;
   border-color: var(--border);
@@ -657,112 +679,46 @@ html, body {
   color: var(--text-dim);
 }
 
-/* MIN/MAX distinct from +/- step buttons */
+/* MIN/MAX: amber identity, clearly separate from step buttons */
 .ctrl-btn.ctrl-limit {
   background: rgba(224,178,92,0.08);
   border-color: var(--border-gold);
   color: var(--gold);
-  font-size: 0.62rem;
-  letter-spacing: 1px;
+  font-size: 0.64rem;
+  letter-spacing: 0.8px;
+  min-width: 44px;
 }
 .ctrl-btn.ctrl-limit:hover:not(:disabled) {
   background: rgba(224,178,92,0.16);
   border-color: var(--gold);
   color: var(--gold-soft);
 }
-.ctrl-btn.ctrl-step {
-  font-size: 1rem;
-  min-width: 34px;
-  padding: 6px 0;
-  line-height: 1;
+
+/* +/- buttons: identical size and weight in BET and SPINS rows */
+.ctrl-btn.ctrl-step, .auto-controls .ctrl-btn:not(.auto-action) {
+  font-size: 1.05rem;
+  font-weight: 700;
+  min-width: var(--ctrl-h);
+  padding: 0;
 }
 
-/* Bet group: control row + step selector stacked as one module */
-.bet-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.bet-controls { justify-content: space-between; }
-
-.increment-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  background: var(--bg-inset);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 8px;
-}
-.increment-label {
-  font-size: 0.55rem;
-  letter-spacing: 1.5px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-}
-.increment-presets { display: flex; gap: 3px; }
-.increment-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  padding: 3px 7px;
-  font-size: 0.64rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition: background var(--transition), border-color var(--transition), color var(--transition);
-}
-.increment-btn:hover:not(.active) {
-  border-color: var(--border-strong);
-  color: var(--text-primary);
-}
-.increment-btn.active {
-  background: rgba(224,178,92,0.12);
-  border-color: var(--gold);
-  color: var(--gold);
-}
-.increment-custom {
-  width: 52px;
-  padding: 3px 5px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 0.66rem;
-  font-family: inherit;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-.increment-custom:focus { outline: none; border-color: var(--gold); }
-.increment-custom.invalid { border-color: var(--red); color: var(--red); }
-.increment-custom::-webkit-outer-spin-button,
-.increment-custom::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.increment-custom { -moz-appearance: textfield; appearance: textfield; }
-.increment-custom::placeholder { color: var(--text-dim); }
-.increment-apply { font-size: 0.58rem; letter-spacing: 1px; padding: 3px 6px; }
-.increment-current {
-  font-size: 0.68rem;
-  font-weight: 800;
-  color: var(--gold);
-  min-width: 18px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
+/* BET module */
+.bet-group { grid-area: bet; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.bet-controls { justify-content: center; gap: 8px; }
 
 .bet-display, .auto-display {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 50px;
+  justify-content: center;
+  min-width: 52px;
+  line-height: 1.05;
 }
 .bet-label, .auto-label {
-  font-size: 0.52rem;
-  letter-spacing: 2px;
-  color: var(--text-dim);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
   text-transform: uppercase;
 }
 .bet-amount, .auto-amount {
@@ -770,40 +726,120 @@ html, body {
   font-weight: 800;
   color: var(--gold-soft);
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
 }
 
-/* SPIN BUTTON */
+/* STEP / increment module */
+.increment-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.increment-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+.increment-presets { display: flex; gap: 4px; }
+.increment-btn {
+  min-width: 28px;
+  padding: 0 6px;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  background: transparent;
+}
+.increment-btn.active {
+  background: rgba(224,178,92,0.14);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.increment-custom-row { display: inline-flex; align-items: center; gap: 8px; }
+.increment-custom-group { display: inline-flex; align-items: stretch; gap: 0; }
+.increment-custom {
+  width: 72px;
+  height: var(--ctrl-h);
+  padding: 0 8px;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-strong);
+  border-right: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.increment-custom::placeholder { color: var(--text-muted); opacity: 1; }
+.increment-custom:focus { outline: none; border-color: var(--gold); z-index: 1; }
+.increment-custom.invalid { border-color: var(--red); color: var(--red); }
+.increment-custom::-webkit-outer-spin-button,
+.increment-custom::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.increment-custom { -moz-appearance: textfield; appearance: textfield; }
+.increment-apply {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--bg-card-alt);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+  font-size: 0.64rem;
+  letter-spacing: 0.5px;
+  padding: 0 10px;
+}
+.increment-apply:hover:not(:disabled) {
+  background: rgba(224,178,92,0.12);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.increment-current {
+  display: inline-flex;
+  align-items: center;
+  height: var(--ctrl-h);
+  padding: 0 10px;
+  border: 1px solid var(--border-gold);
+  border-radius: var(--radius-sm);
+  background: rgba(224,178,92,0.06);
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.increment-current::before {
+  content: 'ACTIVE';
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-right: 6px;
+}
+
+/* SPIN — primary action, isolated in its own zone */
+.spin-zone { grid-area: spin; display: flex; align-items: center; justify-content: center; }
 .spin-btn {
-  align-self: end;
   background: linear-gradient(160deg, var(--gold-soft), var(--gold-dark));
   border: 1px solid var(--gold-soft);
   border-radius: 50%;
-  width: 84px;
-  height: 84px;
+  width: 88px;
+  height: 88px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   cursor: pointer;
-  font-size: 0.6rem;
+  font-family: inherit;
+  font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 2px;
+  letter-spacing: 1.5px;
   color: #1a1206;
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
   transition: transform var(--transition), box-shadow var(--transition),
               background var(--transition), filter var(--transition);
-  position: relative;
-  margin-bottom: 2px;
-}
-.spin-btn::after {
-  content: '';
-  position: absolute;
-  inset: 5px;
-  border-radius: 50%;
-  border: 1px solid rgba(0,0,0,0.18);
-  pointer-events: none;
 }
 .spin-btn:hover:not(:disabled) {
   transform: translateY(-2px);
@@ -811,35 +847,46 @@ html, body {
   box-shadow: 0 12px 28px rgba(0,0,0,0.55), 0 0 0 4px rgba(224,178,92,0.1);
 }
 .spin-btn:active:not(:disabled) { transform: translateY(1px) scale(0.97); }
-.spin-btn:disabled {
-  background: var(--bg-card-alt);
-  border-color: var(--border);
-  box-shadow: none;
-  cursor: not-allowed;
-  color: var(--text-dim);
+.spin-btn:disabled { background: var(--bg-card-alt); border-color: var(--border); box-shadow: none; cursor: not-allowed; color: var(--text-dim); }
+.spin-icon { width: 22px; height: 22px; display: block; }
+.spin-label { display: block; }
+/* During a real spin: clear state, no spinner ambiguity */
+.spin-btn.spinning .spin-icon { display: none; }
+.spin-btn.spinning .spin-label { font-size: 0.58rem; letter-spacing: 1px; }
+.spin-btn.spinning .spin-label::after { content: 'NING'; }
+.spin-btn.spinning::before {
+  content: '';
+  width: 14px; height: 14px;
+  border: 2px solid rgba(0,0,0,0.25);
+  border-top-color: #1a1206;
+  border-radius: 50%;
+  margin-bottom: 2px;
+  animation: spin-rotate 0.8s linear infinite;
 }
-.spin-icon { width: 22px; height: 22px; }
 
-/* Auto-spin controls */
-.auto-controls { justify-content: space-between; }
-#auto-btn {
-  background: rgba(79,179,191,0.08);
-  border-color: rgba(79,179,191,0.3);
+/* AUTO + STOP — one grouped workflow */
+.auto-group { grid-area: auto; display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; }
+.auto-controls { justify-content: center; gap: 6px; }
+.auto-action {
+  background: rgba(79,179,191,0.1);
+  border-color: rgba(79,179,191,0.35);
   color: var(--neon);
-  font-size: 0.62rem;
-  letter-spacing: 1px;
+  font-size: 0.68rem;
+  letter-spacing: 0.8px;
+  min-width: 56px;
 }
-#auto-btn:hover:not(:disabled) {
-  background: rgba(79,179,191,0.16);
+.auto-action:hover:not(:disabled) {
+  background: rgba(79,179,191,0.18);
   border-color: var(--neon);
   color: var(--neon);
 }
 .stop-btn {
-  background: rgba(217,100,89,0.12);
-  border-color: rgba(217,100,89,0.4);
+  width: 100%;
+  background: rgba(217,100,89,0.1);
+  border-color: rgba(217,100,89,0.35);
   color: var(--red);
-  font-size: 0.62rem;
-  letter-spacing: 1px;
+  font-size: 0.68rem;
+  letter-spacing: 0.8px;
 }
 .stop-btn:hover:not(:disabled) {
   background: rgba(217,100,89,0.2);

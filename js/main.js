@@ -239,7 +239,8 @@ function handleSpinClick() {
 }
 
 function handleStopClick() {
-  // Stop both spinning and auto-spin
+  // Stop both the current spin and the auto-spin workflow
+  if (autoSpinActive) stopAutoSpin('Auto-spin stopped');
   SlotMachine.stopAllReels();
 }
 

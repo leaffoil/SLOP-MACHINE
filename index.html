@@ -202,36 +202,43 @@
               </div>
               <div class="increment-controls">
                 <span class="increment-label">STEP</span>
-                <div class="increment-presets" id="increment-presets">
+                <div class="increment-presets" id="increment-presets" role="group" aria-label="Bet increment presets">
                   <button class="increment-btn" data-increment="1">1</button>
                   <button class="increment-btn" data-increment="5">5</button>
                   <button class="increment-btn" data-increment="10">10</button>
                   <button class="increment-btn" data-increment="25">25</button>
                   <button class="increment-btn" data-increment="50">50</button>
                 </div>
-                <input type="number" id="increment-custom" class="increment-custom" min="1" step="1" placeholder="#" aria-label="Custom bet increment" title="Custom increment">
-                <button class="increment-btn increment-apply" id="increment-apply">SET</button>
-                <span class="increment-current" id="increment-current">10</span>
+                <div class="increment-custom-row">
+                  <div class="increment-custom-group">
+                    <input type="number" id="increment-custom" class="increment-custom" min="1" step="1" placeholder="Custom" aria-label="Custom bet increment" title="Enter a custom increment">
+                    <button class="increment-btn increment-apply" id="increment-apply" title="Apply custom increment">SET</button>
+                  </div>
+                  <span class="increment-current" id="increment-current" title="Active increment">10</span>
+                </div>
               </div>
             </div>
 
-            <button class="spin-btn" id="spin-btn">
-              <svg class="spin-icon" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-              </svg>
-              <span>SPIN</span>
-            </button>
+            <div class="spin-zone">
+              <button class="spin-btn" id="spin-btn">
+                <svg class="spin-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor"/>
+                </svg>
+                <span class="spin-label">SPIN</span>
+              </button>
+            </div>
 
-            <button class="ctrl-btn stop-btn" id="stop-btn" style="display: none">STOP</button>
-
-            <div class="auto-controls">
-              <button class="ctrl-btn" id="auto-btn">AUTO</button>
-              <div class="auto-display">
-                <span class="auto-label">SPINS</span>
-                <span class="auto-amount" id="auto-amount">10</span>
+            <div class="auto-group" id="auto-group">
+              <div class="auto-controls">
+                <button class="ctrl-btn auto-action" id="auto-btn" title="Start automatic spins">AUTO</button>
+                <div class="auto-display">
+                  <span class="auto-label">SPINS</span>
+                  <span class="auto-amount" id="auto-amount">10</span>
+                </div>
+                <button class="ctrl-btn" id="auto-down" title="Fewer auto spins">-</button>
+                <button class="ctrl-btn" id="auto-up" title="More auto spins">+</button>
               </div>
-              <button class="ctrl-btn" id="auto-up">+</button>
-              <button class="ctrl-btn" id="auto-down">-</button>
+              <button class="ctrl-btn stop-btn" id="stop-btn" style="display: none" title="Stop automatic spins">STOP</button>
             </div>
           </div>
         </div>
