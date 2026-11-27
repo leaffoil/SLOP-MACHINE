@@ -127,13 +127,15 @@ function initSlotMachine() {
     stopBtn.addEventListener('click', handleStopClick);
   }
   
-  // Wire bet controls (Stage 3 integration)
+  // Wire bet controls (single handler per control). Wrap in an arrow so the
+  // handler runs on click, not at wiring time (the control id is captured).
   ['bet-up', 'bet-down', 'bet-min', 'bet-max'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) {
-      btn.addEventListener('click', handleBetControlClick(id));
+      btn.addEventListener('click', () => handleBetControlClick(id));
     }
   });
+  BetControls.bindUI();
   
   // ---- Machine Selection ----
   // Handle machine card clicks. switchMachine validates the lock state.
@@ -190,6 +192,11 @@ function initSlotMachine() {
     updateAutoStopUI();
   };
   
+  // Refresh bet-control lock/disabled state whenever a spin starts or ends
+  SlotMachine.onSpinStateChange = () => {
+    if (typeof BetControls !== 'undefined') BetControls.updateUI();
+  };
+
   // Handle errors
   SlotMachine.onError = (error) => {
     console.error('Spin error:', error);
@@ -200,7 +207,10 @@ function initSlotMachine() {
   
   // Initialize the slot machine
   SlotMachine.init();
-  
+
+  // Initialize betting controls (display, boundaries, increment indicator)
+  BetControls.updateUI();
+
   // Update initial balance display
   if (window.Economy) {
     window.Economy.updateBalanceDisplay();
@@ -233,40 +243,152 @@ function handleStopClick() {
   SlotMachine.stopAllReels();
 }
 
+/**
+ * BetControls — owns the configurable +/- increment and bet-boundary UI.
+ * The increment is stored in Progression.state so it uses the existing
+ * LocalStorage save system; no separate persistence is created here.
+ * Actual bet limits always come from Economy (MIN_BET / MAX_BET).
+ */
+const BetControls = {
+  DEFAULT_INCREMENT: 10,
+  _bound: false,
+
+  /** Positive integer validation. Returns a number, or null when invalid. */
+  normalizeIncrement(value) {
+    if (value === '' || value === null || value === undefined) return null;
+    const n = Number(value);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null;
+    return n;
+  },
+
+  getIncrement() {
+    const state = window.Progression && window.Progression.state;
+    const value = state ? state.betIncrement : this.DEFAULT_INCREMENT;
+    return this.normalizeIncrement(value) || this.DEFAULT_INCREMENT;
+  },
+
+  /** Set the increment without changing the current bet. */
+  setIncrement(value) {
+    const normalized = this.normalizeIncrement(value);
+    if (normalized === null) {
+      this._markCustomInvalid(true);
+      showToast('Increment must be a positive whole number', 2200);
+      return false;
+    }
+    this._markCustomInvalid(false);
+    if (window.Progression && window.Progression.state) {
+      window.Progression.state.betIncrement = normalized;
+      window.Progression.save();
+    }
+    this.updateUI();
+    return true;
+  },
+
+  _markCustomInvalid(invalid) {
+    const input = document.getElementById('increment-custom');
+    if (input && input.classList) input.classList.toggle('invalid', Boolean(invalid));
+  },
+
+  /** True when bet changes must be blocked (spin or auto-spin in progress). */
+  isLocked() {
+    return SlotMachine.isSpinning ||
+      (window.Economy && window.Economy.hasPendingSpin()) ||
+      autoSpinActive;
+  },
+
+  /** Refresh bet display, boundary disabled states and increment indicator. */
+  updateUI() {
+    const min = window.Economy ? window.Economy.MIN_BET : 10;
+    const max = window.Economy ? window.Economy.MAX_BET : 100;
+    const bet = SlotMachine.currentBet;
+    const locked = this.isLocked();
+
+    const setDisabled = (id, disabled) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = Boolean(disabled);
+    };
+    setDisabled('bet-min', locked || bet <= min);
+    setDisabled('bet-max', locked || bet >= max);
+    setDisabled('bet-down', locked || bet <= min);
+    setDisabled('bet-up', locked || bet >= max);
+
+    const amount = document.getElementById('bet-amount');
+    if (amount) amount.textContent = bet;
+
+    const inc = this.getIncrement();
+    const current = document.getElementById('increment-current');
+    if (current) current.textContent = inc;
+    document.querySelectorAll('.increment-btn[data-increment]').forEach(btn => {
+      const isActive = Number(btn.dataset.increment) === inc;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+  },
+
+  /** Bind increment preset, custom input and apply listeners exactly once. */
+  bindUI() {
+    if (this._bound) return;
+    this._bound = true;
+
+    document.querySelectorAll('.increment-btn[data-increment]').forEach(btn => {
+      btn.addEventListener('click', () => this.setIncrement(btn.dataset.increment));
+    });
+
+    const applyBtn = document.getElementById('increment-apply');
+    if (applyBtn) applyBtn.addEventListener('click', () => {
+      const input = document.getElementById('increment-custom');
+      this.setIncrement(input ? input.value : '');
+    });
+
+    const input = document.getElementById('increment-custom');
+    if (input) {
+      const commit = () => {
+        if (input.value === '') { this._markCustomInvalid(true); return; }
+        this.setIncrement(input.value);
+      };
+      input.addEventListener('change', commit);
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      });
+    }
+  }
+};
+
 function handleBetControlClick(controlId) {
-  if (!window.Economy || SlotMachine.isSpinning) {
-    return; // Block bet changes during spin
+  if (BetControls.isLocked()) {
+    return; // Block bet changes during spin, pending transaction or auto-spin
   }
-  
-  if (window.Economy && window.Economy.hasPendingSpin()) {
-    return; // Block bet changes during active spin transaction
-  }
-  
+
+  const min = window.Economy ? window.Economy.MIN_BET : 10;
+  const max = window.Economy ? window.Economy.MAX_BET : 100;
   const currentBet = SlotMachine.currentBet;
+  const increment = BetControls.getIncrement();
   let newBet;
-  
+
   switch (controlId) {
     case 'bet-up':
-      newBet = currentBet + 10;
+      newBet = Math.min(max, currentBet + increment);
       break;
     case 'bet-down':
-      newBet = currentBet - 10;
+      newBet = Math.max(min, currentBet - increment);
       break;
     case 'bet-min':
-      newBet = 10;
+      newBet = min; // MIN/MAX ignore the increment and use real limits
       break;
     case 'bet-max':
-      newBet = 100;
+      newBet = max;
       break;
     default:
       return;
   }
-  
+
   if (window.Economy) {
     newBet = window.Economy.clampBet(newBet);
   }
-  
+  newBet = Math.max(min, Math.min(max, Math.floor(newBet)));
+
   SlotMachine.setBet(newBet);
+  BetControls.updateUI();
 }
 
 // Auto-spin management
@@ -303,8 +425,9 @@ function startAutoSpin() {
       }
     }
   }, 3000); // 3-second interval
-  
+
   updateAutoStopUI();
+  if (typeof BetControls !== 'undefined') BetControls.updateUI();
 }
 
 function stopAutoSpin(message) {
@@ -315,6 +438,7 @@ function stopAutoSpin(message) {
   autoSpinActive = false;
   autoSpinsRemaining = 0;
   updateAutoStopUI();
+  if (typeof BetControls !== 'undefined') BetControls.updateUI();
   if (message) showToast(message, 2000);
 }
 
@@ -399,4 +523,9 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initSlotMachine);
 } else {
   initSlotMachine();
+}
+
+// Expose for tests / other modules (same pattern as game-logic.js exports)
+if (typeof window !== 'undefined') {
+  window.BetControls = BetControls;
 }

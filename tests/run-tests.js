@@ -57,10 +57,22 @@ function matchesCompound(el, part) {
   if (!part || part === '*') return true;
   const idMatch = part.match(/#([\w-]+)/g) || [];
   const classMatch = part.match(/\.([\w-]+)/g) || [];
+  const attrMatch = part.match(/\[([\w-]+)(?:=["']?([^\]"']*)["']?)?\]/g) || [];
   const tagMatch = part.match(/^[a-zA-Z][\w-]*/);
   if (tagMatch && el.tagName !== tagMatch[0].toUpperCase()) return false;
   if (idMatch.some(m => el.id !== m.slice(1))) return false;
   if (classMatch.some(m => !el.classList.contains(m.slice(1)))) return false;
+  for (const raw of attrMatch) {
+    const inner = raw.slice(1, -1);
+    const eqIdx = inner.indexOf('=');
+    const name = eqIdx === -1 ? inner : inner.slice(0, eqIdx);
+    let value = eqIdx === -1 ? null : inner.slice(eqIdx + 1).replace(/^["']|["']$/g, '');
+    const actual = name.startsWith('data-')
+      ? el.dataset[name.slice(5)]
+      : el.getAttribute(name);
+    if (actual === null) return false;
+    if (value !== null && String(actual) !== value) return false;
+  }
   return true;
 }
 
@@ -82,10 +94,15 @@ class FakeElement {
     this.id = '';
     this._className = '';
     this.textContent = '';
+    this.value = '';
     this._innerHTML = '';
     this.disabled = false;
     this._listeners = {};
+    this._attributes = {};
   }
+  setAttribute(name, value) { this._attributes[name] = String(value); }
+  getAttribute(name) { return Object.prototype.hasOwnProperty.call(this._attributes, name) ? this._attributes[name] : null; }
+  removeAttribute(name) { delete this._attributes[name]; }
   get className() { return this.classList.value; }
   set className(value) {
     this._className = String(value || '');
@@ -736,6 +753,246 @@ function testAutoSpinRegression() {
 }
 
 // ------------------------------------------------------------
+// Betting controls tests
+// ------------------------------------------------------------
+
+function buildBetDOM(document) {
+  const group = document.createElement('div');
+  group.className = 'bet-group';
+  document.body.appendChild(group);
+
+  const controls = document.createElement('div');
+  controls.className = 'bet-controls';
+  ['bet-min', 'bet-down', 'bet-up', 'bet-max'].forEach(id => {
+    const btn = document.createElement('button'); btn.id = id;
+    btn.className = 'ctrl-btn'; controls.appendChild(btn);
+  });
+  const display = document.createElement('div');
+  display.className = 'bet-display';
+  const amount = document.createElement('span'); amount.id = 'bet-amount';
+  display.appendChild(amount); controls.appendChild(display);
+  group.appendChild(controls);
+
+  const incControls = document.createElement('div');
+  incControls.className = 'increment-controls';
+  const presets = document.createElement('div'); presets.id = 'increment-presets';
+  [1, 5, 10, 25, 50].forEach(v => {
+    const btn = document.createElement('button');
+    btn.className = 'increment-btn'; btn.dataset.increment = String(v);
+    presets.appendChild(btn);
+  });
+  incControls.appendChild(presets);
+  const custom = document.createElement('input'); custom.id = 'increment-custom';
+  incControls.appendChild(custom);
+  const apply = document.createElement('button'); apply.id = 'increment-apply';
+  incControls.appendChild(apply);
+  const current = document.createElement('span'); current.id = 'increment-current';
+  incControls.appendChild(current);
+  group.appendChild(incControls);
+}
+
+function createBetWorld(options) {
+  const opts = options || {};
+  const storage = createStorage();
+  const world = createWorld(storage, { skipInit: true, withMain: true });
+  buildBetDOM(world.document);
+  world.document.dispatch('DOMContentLoaded', {});
+  return world;
+}
+
+function clickBet(world, id) { world.document.getElementById(id).click(); }
+
+function testBettingControls() {
+  console.log('\n=== Betting controls ===');
+
+  const world = createBetWorld();
+  const { sandbox, document } = world;
+  const { SlotMachine, Economy, BetControls, Progression } = sandbox;
+
+  eq('Default bet is the minimum', SlotMachine.currentBet, 10);
+  eq('Default increment is 10', BetControls.getIncrement(), 10);
+  eq('Default increment display shows 10', document.getElementById('increment-current').textContent, 10);
+
+  // MIN / MAX ignore the increment
+  SlotMachine.setBet(55);
+  clickBet(world, 'bet-min');
+  eq('MIN sets bet to economy minimum', SlotMachine.currentBet, Economy.MIN_BET);
+  clickBet(world, 'bet-max');
+  eq('MAX sets bet to economy maximum', SlotMachine.currentBet, Economy.MAX_BET);
+  eq('Bet display synchronizes after MAX', document.getElementById('bet-amount').textContent, 100);
+  eq('MIN press at minimum is a no-op', SlotMachine.currentBet, 100);
+
+  // Plus / minus with every preset increment
+  [1, 5, 10, 25, 50].forEach(inc => {
+    BetControls.setIncrement(inc);
+    SlotMachine.setBet(50);
+    clickBet(world, 'bet-up');
+    eq('Plus with increment ' + inc, SlotMachine.currentBet, Math.min(100, 50 + inc));
+    SlotMachine.setBet(50);
+    clickBet(world, 'bet-down');
+    eq('Minus with increment ' + inc, SlotMachine.currentBet, Math.max(10, 50 - inc));
+  });
+
+  // Worked example from the spec
+  SlotMachine.setBet(50);
+  BetControls.setIncrement(5);
+  clickBet(world, 'bet-up');
+  eq('Example: 50 + 5 = 55', SlotMachine.currentBet, 55);
+  clickBet(world, 'bet-down');
+  eq('Example: 55 - 5 = 50', SlotMachine.currentBet, 50);
+  BetControls.setIncrement(25);
+  clickBet(world, 'bet-up');
+  eq('Example: 50 + 25 = 75', SlotMachine.currentBet, 75);
+
+  // Boundary clamping
+  BetControls.setIncrement(10);
+  SlotMachine.setBet(95);
+  clickBet(world, 'bet-up');
+  eq('Bet 95 + increment 10 clamps to 100', SlotMachine.currentBet, 100);
+  SlotMachine.setBet(15);
+  clickBet(world, 'bet-down');
+  eq('Bet 15 - increment 10 clamps to 10', SlotMachine.currentBet, 10);
+  SlotMachine.setBet(10);
+  clickBet(world, 'bet-min');
+  eq('Bet 10 + MIN stays 10', SlotMachine.currentBet, 10);
+  SlotMachine.setBet(100);
+  clickBet(world, 'bet-max');
+  eq('Bet 100 + MAX stays 100', SlotMachine.currentBet, 100);
+
+  // Disabled states at boundaries
+  SlotMachine.setBet(10); BetControls.updateUI();
+  eq('At minimum, MIN is disabled', document.getElementById('bet-min').disabled, true);
+  eq('At minimum, minus is disabled', document.getElementById('bet-down').disabled, true);
+  eq('At minimum, plus is enabled', document.getElementById('bet-up').disabled, false);
+  SlotMachine.setBet(100); BetControls.updateUI();
+  eq('At maximum, MAX is disabled', document.getElementById('bet-max').disabled, true);
+  eq('At maximum, plus is disabled', document.getElementById('bet-up').disabled, true);
+  eq('At maximum, minus is enabled', document.getElementById('bet-down').disabled, false);
+
+  // Changing increment does not change the bet
+  SlotMachine.setBet(60);
+  BetControls.setIncrement(25);
+  eq('Changing increment leaves bet untouched', SlotMachine.currentBet, 60);
+  eq('Increment display updates', document.getElementById('increment-current').textContent, 25);
+
+  // Custom increment input via SET button
+  const custom = document.getElementById('increment-custom');
+  custom.value = '7';
+  document.getElementById('increment-apply').click();
+  eq('Custom increment accepts 7', BetControls.getIncrement(), 7);
+  SlotMachine.setBet(50);
+  clickBet(world, 'bet-up');
+  eq('Plus uses custom increment 7', SlotMachine.currentBet, 57);
+
+  // Invalid increments are rejected and do not change the increment
+  ['0', '-5', '', 'abc', '1.5', '  '].forEach(bad => {
+    eq('Invalid increment rejected: ' + JSON.stringify(bad), BetControls.setIncrement(bad), false);
+    eq('Increment unchanged after invalid: ' + JSON.stringify(bad), BetControls.getIncrement(), 7);
+  });
+  check('Empty custom input is flagged invalid', (() => {
+    custom.value = '';
+    BetControls.setIncrement('');
+    return custom.classList.contains('invalid');
+  })());
+
+  // Active preset highlighting
+  BetControls.setIncrement(5);
+  const activeBtn = document.querySelector('.increment-btn[data-increment="5"]');
+  check('Selected preset is highlighted', activeBtn.classList.contains('active'));
+  eq('Selected preset aria-pressed is true', activeBtn.getAttribute('aria-pressed'), 'true');
+
+  // No invalid bet values reach the economy
+  eq('Bet stays within economy limits after all operations',
+    SlotMachine.currentBet >= Economy.MIN_BET && SlotMachine.currentBet <= Economy.MAX_BET, true);
+}
+
+function testBettingLocking() {
+  console.log('\n=== Betting during spin & auto-spin ===');
+
+  const world = createBetWorld();
+  const { sandbox, document } = world;
+  const { SlotMachine, Economy, BetControls } = sandbox;
+
+  // Block while spinning
+  SlotMachine.setBet(50);
+  SlotMachine.isSpinning = true;
+  BetControls.updateUI();
+  clickBet(world, 'bet-up');
+  eq('Plus is blocked while spinning', SlotMachine.currentBet, 50);
+  eq('Bet buttons disabled while spinning', document.getElementById('bet-up').disabled, true);
+  SlotMachine.isSpinning = false;
+
+  // Block while a spin transaction is pending
+  Economy.beginSpin(50);
+  clickBet(world, 'bet-up');
+  eq('Plus is blocked during pending transaction', SlotMachine.currentBet, 50);
+  Economy.refundSpin();
+
+  // Block during auto-spin (use a fresh world to avoid stale timer state)
+  const autoWorld = createBetWorld();
+  const aSlot = autoWorld.sandbox.SlotMachine;
+  const aDoc = autoWorld.document;
+  aSlot.setBet(50);
+  autoWorld.sandbox.startAutoSpin();
+  clickBet(autoWorld, 'bet-up');
+  eq('Plus is blocked during auto-spin', aSlot.currentBet, 50);
+  eq('Bet buttons disabled during auto-spin', aDoc.getElementById('bet-up').disabled, true);
+  autoWorld.sandbox.stopAutoSpin('');
+  clickBet(autoWorld, 'bet-up');
+  eq('Plus works again after auto-spin stops', aSlot.currentBet, 60);
+}
+
+function testBetDeductionAndFunds() {
+  console.log('\n=== Bet deduction & insufficient funds ===');
+
+  const world = createBetWorld();
+  const { sandbox } = world;
+  const { SlotMachine, Economy, BetControls } = sandbox;
+
+  BetControls.setIncrement(25);
+  SlotMachine.setBet(75);
+  const before = Economy.getBalance();
+  eq('Spin deduction starts', Economy.beginSpin(SlotMachine.currentBet), true);
+  eq('Selected bet is the amount deducted', before - Economy.getBalance(), 75);
+  Economy.completeSpin({ isWin: false, payout: 0 });
+  eq('Balance after losing spin', Economy.getBalance(), before - 75);
+
+  // Insufficient balance handling preserved
+  Economy.balance = 50;
+  eq('Cannot afford a bet above balance', Economy.canAfford(100), false);
+  eq('beginSpin rejects unaffordable bet', Economy.beginSpin(100), false);
+  eq('Balance unchanged after rejected spin', Economy.getBalance(), 50);
+  eq('clampBet caps to affordable amount', Economy.clampBet(100), 50);
+  Economy.balance = 1000;
+}
+
+function testIncrementPersistence() {
+  console.log('\n=== Increment persistence ===');
+
+  const storage = createStorage();
+  let world = createWorld(storage, { skipInit: true, withMain: true });
+  buildBetDOM(world.document);
+  world.document.dispatch('DOMContentLoaded', {});
+  world.sandbox.BetControls.setIncrement(25);
+  world.sandbox.Progression.save();
+
+  // Reload with the same storage
+  world = createWorld(storage, { skipInit: true, withMain: true });
+  buildBetDOM(world.document);
+  world.document.dispatch('DOMContentLoaded', {});
+  eq('Increment survives reload', world.sandbox.BetControls.getIncrement(), 25);
+  eq('Increment display restored after reload', world.document.getElementById('increment-current').textContent, 25);
+
+  // Corrupt increment value falls back to default
+  const corrupt = createStorage();
+  corrupt.setItem('slop-machine-progress', JSON.stringify({ betIncrement: -7 }));
+  const corruptWorld = createWorld(corrupt, { skipInit: true, withMain: true });
+  buildBetDOM(corruptWorld.document);
+  corruptWorld.document.dispatch('DOMContentLoaded', {});
+  eq('Invalid persisted increment falls back to 10', corruptWorld.sandbox.BetControls.getIncrement(), 10);
+}
+
+// ------------------------------------------------------------
 // Run
 // ------------------------------------------------------------
 
@@ -750,6 +1007,10 @@ try {
   testProgressionRegression();
   testPayoutRegression();
   testAutoSpinRegression();
+  testBettingControls();
+  testBettingLocking();
+  testBetDeductionAndFunds();
+  testIncrementPersistence();
 } catch (error) {
   console.error('\nUNEXPECTED TEST ERROR:', error);
   failed += 1;

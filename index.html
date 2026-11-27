@@ -189,15 +189,30 @@
           </div>
 
           <div class="controls-panel">
-            <div class="bet-controls">
-              <button class="ctrl-btn" id="bet-min">MIN</button>
-              <button class="ctrl-btn" id="bet-down">-</button>
-              <div class="bet-display">
-                <span class="bet-label">BET</span>
-                <span class="bet-amount" id="bet-amount">10</span>
+            <div class="bet-group">
+              <div class="bet-controls">
+                <button class="ctrl-btn ctrl-limit" id="bet-min">MIN</button>
+                <button class="ctrl-btn ctrl-step" id="bet-down">-</button>
+                <div class="bet-display">
+                  <span class="bet-label">BET</span>
+                  <span class="bet-amount" id="bet-amount">10</span>
+                </div>
+                <button class="ctrl-btn ctrl-step" id="bet-up">+</button>
+                <button class="ctrl-btn ctrl-limit" id="bet-max">MAX</button>
               </div>
-              <button class="ctrl-btn" id="bet-up">+</button>
-              <button class="ctrl-btn" id="bet-max">MAX</button>
+              <div class="increment-controls">
+                <span class="increment-label">STEP</span>
+                <div class="increment-presets" id="increment-presets">
+                  <button class="increment-btn" data-increment="1">1</button>
+                  <button class="increment-btn" data-increment="5">5</button>
+                  <button class="increment-btn" data-increment="10">10</button>
+                  <button class="increment-btn" data-increment="25">25</button>
+                  <button class="increment-btn" data-increment="50">50</button>
+                </div>
+                <input type="number" id="increment-custom" class="increment-custom" min="1" step="1" placeholder="Custom" aria-label="Custom bet increment">
+                <button class="increment-btn increment-apply" id="increment-apply">SET</button>
+                <span class="increment-current" id="increment-current">10</span>
+              </div>
             </div>
 
             <button class="spin-btn" id="spin-btn">

@@ -766,6 +766,7 @@ const SlotMachine = {
   onSpinStart: null,
   onReelStop: null,
   onSpinComplete: null,
+  onSpinStateChange: null, // fired whenever the spin lock toggles
   
   /**
    * Initialize the slot machine
@@ -912,6 +913,7 @@ const SlotMachine = {
     }
     // Block bet controls during spin
     this.updateBetControlsState();
+    if (this.onSpinStateChange) this.onSpinStateChange(Boolean(disabled));
   },
   
   /**
@@ -1016,15 +1018,18 @@ const SlotMachine = {
    * Adjust bet by delta
    */
   adjustBet(delta) {
-    const newBet = Math.max(10, Math.min(100, this.currentBet + delta));
-    this.setBet(newBet);
+    const min = (window.Economy && window.Economy.MIN_BET) || 10;
+    const max = (window.Economy && window.Economy.MAX_BET) || 100;
+    this.setBet(Math.max(min, Math.min(max, this.currentBet + delta)));
   },
-  
+
   /**
-   * Set bet to specific amount
+   * Set bet to specific amount, clamped to the economy's real limits.
    */
   setBet(amount) {
-    this.currentBet = Math.max(10, Math.min(100, amount));
+    const min = (window.Economy && window.Economy.MIN_BET) || 10;
+    const max = (window.Economy && window.Economy.MAX_BET) || 100;
+    this.currentBet = Math.max(min, Math.min(max, amount));
     this.updateDisplay();
   },
   

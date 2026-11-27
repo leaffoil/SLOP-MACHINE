@@ -520,6 +520,96 @@ html, body {
   border-color: var(--gold);
   color: var(--gold);
 }
+.ctrl-btn:disabled, .ctrl-btn.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+.ctrl-btn:disabled:hover, .ctrl-btn.disabled:hover {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+/* MIN/MAX are visually distinct from the +/- step buttons */
+.ctrl-btn.ctrl-limit {
+  background: rgba(155,89,182,0.12);
+  border-color: rgba(155,89,182,0.45);
+  color: var(--purple, #9b59b6);
+  letter-spacing: 1px;
+}
+.ctrl-btn.ctrl-limit:hover:not(:disabled) {
+  background: rgba(155,89,182,0.25);
+  border-color: var(--purple, #9b59b6);
+  color: #c39bd3;
+}
+.ctrl-btn.ctrl-step { font-size: 0.9rem; min-width: 30px; }
+
+/* Bet group keeps the increment selector close to the bet controls */
+.bet-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.increment-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+}
+.increment-label {
+  font-size: 0.55rem;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+.increment-presets { display: flex; gap: 3px; }
+.increment-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.increment-btn:hover { border-color: var(--neon); color: var(--neon); }
+.increment-btn.active {
+  background: rgba(0,212,255,0.15);
+  border-color: var(--neon);
+  color: var(--neon);
+}
+.increment-custom {
+  width: 58px;
+  padding: 3px 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.65rem;
+  text-align: center;
+}
+.increment-custom:focus { outline: none; border-color: var(--neon); }
+.increment-custom.invalid { border-color: var(--red); color: var(--red); }
+.increment-apply { letter-spacing: 1px; }
+.increment-current {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--neon);
+  min-width: 18px;
+  text-align: center;
+}
 
 .bet-display, .auto-display {
   display: flex;

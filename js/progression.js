@@ -124,7 +124,10 @@ const Progression = {
       // Stage 5: machine selection and daily missions
       machineSelected: 'classic',
       machineUnlocked: ['classic'],
-      dailyMissions: this._freshDailyMissions('')
+      dailyMissions: this._freshDailyMissions(''),
+
+      // Betting: selected +/- increment (see main.js BetControls)
+      betIncrement: 10
     };
   },
 
@@ -162,6 +165,11 @@ const Progression = {
 
     this.updateUI();
     this.save();
+
+    // Refresh betting UI once persisted state (including betIncrement) is ready
+    if (typeof window !== 'undefined' && window.BetControls) {
+      window.BetControls.updateUI();
+    }
   },
 
   // ----------------------------------------------------------
@@ -880,6 +888,10 @@ const Progression = {
     this.state.spins = num(data.spins, 0);
     this.state.wins = num(data.wins, 0);
     this.state.jackpots = num(data.jackpots, 0);
+
+    // Betting increment: positive integer only; default 10 on bad/missing data
+    const rawIncrement = Number(data.betIncrement);
+    this.state.betIncrement = Number.isInteger(rawIncrement) && rawIncrement > 0 ? rawIncrement : 10;
 
     // Stage 5: machine selection and daily missions
     const knownMachine = typeof MACHINE_DEFS !== 'undefined' && data.machineSelected && MACHINE_DEFS[data.machineSelected];
