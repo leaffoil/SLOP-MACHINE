@@ -28,11 +28,11 @@
   50%       { opacity: 0.4; }
 }
 
-/* ---- Jackpot pulse ---- */
+/* ---- Jackpot pulse (restrained) ---- */
 @keyframes jackpot-pulse {
-  0%   { box-shadow: 0 0 10px rgba(255,215,0,0.4); }
-  50%  { box-shadow: 0 0 60px rgba(255,215,0,0.9), 0 0 120px rgba(255,215,0,0.4); }
-  100% { box-shadow: 0 0 10px rgba(255,215,0,0.4); }
+  0%   { box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px var(--gold); }
+  50%  { box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 32px rgba(217,100,89,0.5), 0 0 0 1px var(--gold); }
+  100% { box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px var(--gold); }
 }
 
 /* ---- Level up scale ---- */
@@ -77,8 +77,8 @@
 
 /* ---- Anticipation glow (when jackpot possible) ---- */
 @keyframes anticipation-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(255,215,0,0.2), inset 0 0 40px rgba(0,0,0,0.5); }
-  50%      { box-shadow: 0 0 40px rgba(255,215,0,0.5), 0 0 80px rgba(255,215,0,0.3), inset 0 0 40px rgba(0,0,0,0.5); }
+  0%, 100% { box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px var(--gold); }
+  50%      { box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 28px rgba(224,178,92,0.35), 0 0 0 1px var(--gold); }
 }
 
 /* ---- Reel stopping bounce ---- */
@@ -140,14 +140,8 @@
   animation: payout-count 0.3s ease-out forwards;
 }
 
-/* Spin button active pulse */
-@keyframes spin-btn-idle {
-  0%, 100% { box-shadow: 0 0 25px rgba(255,215,0,0.3), 0 4px 15px rgba(0,0,0,0.5); }
-  50%       { box-shadow: 0 0 40px rgba(255,215,0,0.6), 0 4px 20px rgba(0,0,0,0.6); }
-}
-.spin-btn:not(:disabled) {
-  animation: spin-btn-idle 2s ease-in-out infinite;
-}
+/* Spin button: static, confident — no idle pulsing */
+.spin-btn:not(:disabled) { animation: none; }
 
 /* ========================================
    STAGE 2: REEL ANIMATION STYLES
@@ -173,9 +167,9 @@
 
 /* Winning symbol highlight */
 .symbol-slot.winning {
-  background: rgba(255,215,0,0.15);
-  box-shadow: 0 0 20px var(--gold-glow), inset 0 0 20px rgba(255,215,0,0.1);
-  animation: win-flash 0.5s ease-in-out 3;
+  background: var(--gold-glow);
+  box-shadow: inset 0 0 0 1px var(--gold);
+  animation: win-flash 0.5s ease-in-out 2;
 }
 
 /* Last result winning highlight */
@@ -210,8 +204,10 @@
 }
 .spin-btn.spinning {
   animation: none !important;
-  background: linear-gradient(135deg, #666, #888, #666);
-  box-shadow: 0 0 10px rgba(255,215,0,0.1);
+  background: var(--bg-card-alt);
+  border-color: var(--border);
+  box-shadow: none;
+  color: var(--text-dim);
 }
 
 /* Win line active */
@@ -228,26 +224,14 @@
   }
 }
 
-/* Reduced motion support */
+/* Reduced motion support — disable decorative motion everywhere */
 @media (prefers-reduced-motion: reduce) {
-  .reel.spinning,
-  .anim-reel-spin,
-  .anim-win-flash,
-  .anim-jackpot-pulse,
-  .anim-screen-shake,
-  .anim-level-up-pop,
-  .coin-particle,
-  .chrome-light,
-  .spin-btn:not(:disabled),
-  .win-line.active,
-  .slot-machine.jackpot,
-  .slot-machine.anticipation,
-  .symbol-slot.winning,
-  .anim-payout-count {
-    animation: none !important;
-    transition: none !important;
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-  .reel {
-    transition: none !important;
-  }
+  .reel.spinning { filter: none; }
+  .reel.settling { filter: none; }
 }

@@ -1,90 +1,135 @@
 /* ========================================
    NEON ARCADE SLOTS — RESPONSIVE
+   Reel geometry (90px symbol + 4px gap, 110px window)
+   is preserved so animation offsets stay correct.
    ======================================== */
 
-/* ---- Tablet (max 900px) ---- */
-@media (max-width: 900px) {
+/* ---- Tablet (max 980px) ---- */
+@media (max-width: 980px) {
   .game-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    max-width: 620px;
   }
 
-  .left-sidebar  { order: 2; }
   .slot-machine-wrap { order: 1; }
-  .right-sidebar { order: 3; }
+  .left-sidebar      { order: 2; }
+  .right-sidebar     { order: 3; }
 
   .left-sidebar,
   .right-sidebar {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
   }
+  .left-sidebar .payout-table { grid-column: span 2; }
 
-  .payout-table { grid-column: span 2; }
-
-  .slot-machine { max-width: 100%; }
-  .controls-panel { max-width: 100%; }
+  .section { padding: 24px 18px 36px; }
 }
 
-/* ---- Mobile (max 600px) ---- */
-@media (max-width: 600px) {
-  .app-header { padding: 8px 14px; }
-  .logo-text { font-size: 0.85rem; }
-  .header-center { gap: 14px; }
-  .stat-value { font-size: 0.95rem; }
-  .stat-label { font-size: 0.55rem; }
+/* ---- Mobile (max 640px) ---- */
+@media (max-width: 640px) {
+  body { font-size: 14px; }
 
-  .nav-btn { padding: 8px 10px; font-size: 0.6rem; min-width: 48px; }
+  .app-header { padding: 10px 14px; gap: 10px; }
+  .logo-text { font-size: 0.82rem; letter-spacing: 2px; }
+  .logo-icon { width: 24px; height: 24px; }
+  .header-center { gap: 0; }
+  .header-stat { min-width: 64px; padding: 3px 8px; }
+  .stat-label { font-size: 0.5rem; letter-spacing: 1px; }
+  .stat-value { font-size: 0.92rem; }
+  .icon-btn { padding: 6px; }
+
+  .main-nav {
+    justify-content: flex-start;
+    padding: 0 8px;
+    -webkit-mask-image: linear-gradient(to right, #000 92%, transparent 100%);
+    mask-image: linear-gradient(to right, #000 92%, transparent 100%);
+  }
+  .nav-btn { padding: 9px 11px; font-size: 0.55rem; min-width: 54px; }
   .nav-btn svg { width: 16px; height: 16px; }
 
-  .section { padding: 14px; }
-  .section-title { font-size: 1.2rem; }
+  .section { padding: 20px 12px 32px; }
+  .section-title { font-size: 1.2rem; letter-spacing: 3px; }
+  .section-sub { font-size: 0.74rem; }
 
-  .reel-window { width: 76px; height: 86px; }
-  .symbol-slot { width: 70px; height: 70px; }
-  .symbol-slot svg { width: 54px; height: 54px; }
+  .slot-machine { padding: 18px 14px 14px; }
+  .machine-name-badge { font-size: 0.56rem; padding: 6px 12px; letter-spacing: 2px; }
+  .machine-name-badge::before,
+  .machine-name-badge::after { width: 10px; }
+  .machine-top-chrome { gap: 10px; margin-bottom: 14px; }
+
+  /* Keep vertical geometry intact; narrow windows horizontally only */
+  .reels-container { padding: 8px 4px; }
+  .reel-window { width: 84px; height: 110px; }
+  .symbol-slot { width: 84px; height: 90px; }
+  .symbol-placeholder { width: 84px; height: 90px; }
+  .symbol-slot svg { width: 64px; height: 64px; }
+  .reel-divider { height: 90px; }
+
+  .controls-panel {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 14px;
+    max-width: 420px;
+  }
+  .bet-group { width: 100%; }
+  .bet-controls, .auto-controls { padding: 7px; }
+  .ctrl-btn { padding: 7px 9px; font-size: 0.68rem; }
+  .ctrl-btn.ctrl-step { min-width: 32px; }
+  .increment-controls { padding: 6px; gap: 4px; }
+  .increment-btn { padding: 4px 6px; font-size: 0.6rem; }
+  .increment-custom { width: 46px; font-size: 0.62rem; }
+  .increment-label { display: none; }
+  .spin-btn { width: 74px; height: 74px; margin-bottom: 0; }
+  .spin-icon { width: 19px; height: 19px; }
+  .auto-controls { width: 100%; max-width: 280px; }
 
   .left-sidebar,
-  .right-sidebar {
-    grid-template-columns: 1fr;
+  .right-sidebar { grid-template-columns: minmax(0, 1fr); }
+  .left-sidebar .payout-table { grid-column: span 1; }
+
+  .mission-card {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'info' 'progress' 'claim';
+    gap: 10px;
+    padding: 16px;
   }
-  .payout-table { grid-column: span 1; }
+  .mission-claim-btn { width: 100%; }
 
-  .controls-panel { gap: 10px; }
-  .spin-btn { width: 76px; height: 76px; }
+  .machines-grid,
+  .achievements-grid { grid-template-columns: minmax(0, 1fr); }
+  .collection-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stat-card { padding: 16px 10px; }
+  .stat-card-value { font-size: 1.2rem; }
 
-  .machines-grid { grid-template-columns: 1fr; }
-  .collection-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
-  .achievements-grid { grid-template-columns: 1fr; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-
-  .mission-card { flex-direction: column; align-items: flex-start; }
-
-  .bet-controls, .auto-controls { padding: 6px; }
-  .ctrl-btn { padding: 5px 7px; font-size: 0.65rem; }
-  .increment-controls { gap: 3px; padding: 4px; }
-  .increment-btn { padding: 3px 4px; font-size: 0.58rem; }
-  .increment-custom { width: 46px; font-size: 0.6rem; }
-  .increment-label { display: none; }
-
-  .toast { font-size: 0.75rem; padding: 10px 18px; }
+  .modal { padding: 22px; }
+  .toast { font-size: 0.74rem; padding: 10px 16px; bottom: 18px; }
 }
 
-/* ---- Very small (max 380px) ---- */
-@media (max-width: 380px) {
-  .header-stat:nth-child(3) { display: none; } /* hide prestige on tiny screens */
-  .reel-window { width: 64px; height: 72px; }
-  .symbol-slot { width: 58px; height: 58px; }
-  .symbol-slot svg { width: 46px; height: 46px; }
+/* ---- Very small (max 420px) ---- */
+@media (max-width: 420px) {
+  .header-stat:nth-child(3) { display: none; } /* prestige stat */
+  .logo-text { font-size: 0.76rem; letter-spacing: 1.5px; }
+  .header-stat { min-width: 58px; padding: 3px 6px; }
+  .reel-window { width: 74px; }
+  .symbol-slot, .symbol-placeholder { width: 74px; height: 90px; }
+  .symbol-slot svg { width: 58px; height: 58px; }
   .spin-btn { width: 68px; height: 68px; }
+  .increment-presets { gap: 2px; }
+  .increment-btn { padding: 3px 5px; }
+  .increment-custom { width: 42px; }
+  .nav-btn { min-width: 48px; padding: 8px; }
 }
+
 
 /* ---- Desktop wide (min 1200px) ---- */
 @media (min-width: 1200px) {
   .game-layout {
-    grid-template-columns: 240px 1fr 240px;
+    grid-template-columns: 230px minmax(0, 1fr) 230px;
     gap: 28px;
+    max-width: 1240px;
   }
   .slot-machine { max-width: 520px; }
-  .reel-window { width: 110px; height: 118px; }
 }
