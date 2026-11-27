@@ -78,9 +78,9 @@ RTP (Return to Player) represents the theoretical percentage of wagered coins re
 
 The theoretical RTP is calculated using the probability of each outcome multiplied by its payout:
 
-\[
-RTP = \sum_{i=1}^{n} P_i \times R_i \times 100
-\]
+<p align="center">
+  RTP = &Sigma; (P<sub>i</sub> &times; R<sub>i</sub>) &times; 100
+</p>
 
 Where:
 - \(P_i\) = Probability of an outcome.
