@@ -12,19 +12,106 @@
 'use strict';
 
 // ============================================================
-// SYMBOL DEFINITIONS
+// SYMBOL DEFINITIONS (per machine)
 // ============================================================
 
-const SYMBOLS = {
-  CHERRY:    { id: 'cherry',    name: 'Cherry',     multiplier: 2,  weight: 30, color: '#e74c3c' },
-  LEMON:     { id: 'lemon',     name: 'Lemon',      multiplier: 3,  weight: 25, color: '#f1c40f' },
-  WATERMELON:{ id: 'watermelon',name: 'Watermelon',  multiplier: 5,  weight: 20, color: '#2ecc71' },
-  DIAMOND:   { id: 'diamond',   name: 'Diamond',    multiplier: 10, weight: 12, color: '#3498db' },
-  STAR:      { id: 'star',      name: 'Star',       multiplier: 15, weight: 8,  color: '#9b59b6' },
-  SEVEN:     { id: 'seven',     name: 'Lucky 7',    multiplier: 50, weight: 3,  color: '#FFD700' },
-  WILD:      { id: 'wild',      name: 'Wild',       multiplier: 0,  weight: 2,  color: '#e74c3c' }, // multiplier 0 = special handling
+const MACHINE_DEFS = {
+  classic: {
+    id: 'classic',
+    name: 'Classic Machine',
+    unlockLevel: 1,
+    symbols: {
+      CHERRY:    { id: 'cherry',    name: 'Cherry',     multiplier: 2,  weight: 30, color: '#e74c3c' },
+      LEMON:     { id: 'lemon',     name: 'Lemon',      multiplier: 3,  weight: 25, color: '#f1c40f' },
+      WATERMELON:{ id: 'watermelon',name: 'Watermelon',  multiplier: 5,  weight: 20, color: '#2ecc71' },
+      DIAMOND:   { id: 'diamond',   name: 'Diamond',    multiplier: 10, weight: 12, color: '#3498db' },
+      STAR:      { id: 'star',      name: 'Star',       multiplier: 15, weight: 8,  color: '#9b59b6' },
+      SEVEN:     { id: 'seven',     name: 'Lucky 7',    multiplier: 50, weight: 3,  color: '#FFD700' },
+      WILD:      { id: 'wild',      name: 'Wild',       multiplier: 0,  weight: 2,  color: '#e74c3c' },
+    }
+  },
+  treasure: {
+    id: 'treasure',
+    name: 'Treasure Machine',
+    unlockLevel: 5,
+    symbols: {
+      COIN:      { id: 'coin',      name: 'Gold Coin',  multiplier: 2,  weight: 30, color: '#FFD700' },
+      GEM:       { id: 'gem',       name: 'Ruby',       multiplier: 3,  weight: 25, color: '#e74c3c' },
+      CHEST:     { id: 'chest',     name: 'Chest',      multiplier: 5,  weight: 20, color: '#8B4513' },
+      CROWN:     { id: 'crown',     name: 'Crown',      multiplier: 10, weight: 12, color: '#FFD700' },
+      SAPPHIRE:  { id: 'sapphire',  name: 'Sapphire',   multiplier: 15, weight: 8,  color: '#0066cc' },
+      TREASURE:  { id: 'treasure',  name: 'Treasure',   multiplier: 50, weight: 3,  color: '#FFD700' },
+      WILD:      { id: 'wild',      name: 'Wild',       multiplier: 0,  weight: 2,  color: '#e74c3c' },
+    }
+  },
+  cyber: {
+    id: 'cyber',
+    name: 'Cyber Machine',
+    unlockLevel: 10,
+    symbols: {
+      CHIP:      { id: 'chip',      name: 'Chip',       multiplier: 2,  weight: 30, color: '#00d4ff' },
+      DATA:      { id: 'data',      name: 'Data',       multiplier: 3,  weight: 25, color: '#00ff88' },
+      ROBOT:     { id: 'robot',     name: 'Robot',      multiplier: 5,  weight: 20, color: '#888888' },
+      LASER:     { id: 'laser',     name: 'Laser',      multiplier: 10, weight: 12, color: '#ff0066' },
+      HOLOGRAM:  { id: 'hologram',  name: 'Hologram',   multiplier: 15, weight: 8,  color: '#aa00ff' },
+      CORE:      { id: 'core',      name: 'Core',       multiplier: 50, weight: 3,  color: '#00d4ff' },
+      WILD:      { id: 'wild',      name: 'Wild',       multiplier: 0,  weight: 2,  color: '#e74c3c' },
+    }
+  }
 };
 
+// Active machine (defaults to classic)
+let activeMachineId = 'classic';
+
+function getActiveMachine() {
+  return MACHINE_DEFS[activeMachineId] || MACHINE_DEFS.classic;
+}
+
+function getActiveSymbols() {
+  return getActiveMachine().symbols;
+}
+
+function getSymbolList() {
+  return Object.values(getActiveSymbols());
+}
+
+function getTotalWeight() {
+  return getSymbolList().reduce((sum, s) => sum + s.weight, 0);
+}
+
+function setActiveMachineId(machineId) {
+  if (MACHINE_DEFS[machineId]) activeMachineId = machineId;
+  return activeMachineId;
+}
+
+function getActiveMachineId() {
+  return activeMachineId;
+}
+
+/** Look up a symbol across every machine (used for collection cards). */
+function findSymbolById(symbolId) {
+  const id = String(symbolId || '').toLowerCase();
+  for (const machine of Object.values(MACHINE_DEFS)) {
+    for (const symbol of Object.values(machine.symbols)) {
+      if (symbol.id === id) return symbol;
+    }
+  }
+  return null;
+}
+
+/** All unique symbol ids across every machine. */
+function getAllSymbolIds() {
+  const ids = [];
+  Object.values(MACHINE_DEFS).forEach(machine => {
+    Object.values(machine.symbols).forEach(symbol => {
+      if (ids.indexOf(symbol.id) === -1) ids.push(symbol.id);
+    });
+  });
+  return ids;
+}
+
+// Legacy exports for backwards compatibility (classic machine)
+const SYMBOLS = MACHINE_DEFS.classic.symbols;
 const SYMBOL_LIST = Object.values(SYMBOLS);
 const TOTAL_WEIGHT = SYMBOL_LIST.reduce((sum, s) => sum + s.weight, 0);
 
@@ -79,9 +166,108 @@ const SymbolRenderer = {
       <text x="20" y="30" font-size="18" font-weight="900" fill="#fff" font-family="Arial" text-anchor="middle">W</text>
     </svg>`;
   },
+
+  // ---- Treasure machine ----
+  coin(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <circle cx="20" cy="20" r="15" fill="${symbol.color}" stroke="#b8860b" stroke-width="2"/>
+      <circle cx="20" cy="20" r="10" fill="none" stroke="#b8860b" stroke-width="1.5" opacity="0.7"/>
+      <text x="20" y="26" font-size="15" font-weight="900" fill="#7a5c00" font-family="Arial" text-anchor="middle">$</text>
+    </svg>`;
+  },
+  gem(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <polygon points="20,4 34,16 20,36 6,16" fill="${symbol.color}" stroke="#ff8a8a" stroke-width="1.5"/>
+      <polygon points="20,4 27,16 20,36 13,16" fill="#ff6b6b" opacity="0.55"/>
+      <line x1="6" y1="16" x2="34" y2="16" stroke="#ffd0d0" stroke-width="1" opacity="0.6"/>
+    </svg>`;
+  },
+  chest(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <rect x="6" y="17" width="28" height="16" rx="2" fill="${symbol.color}" stroke="#5c2e0e" stroke-width="1.5"/>
+      <path d="M6 17c0-6 6-9 14-9s14 3 14 9" fill="#a0522d" stroke="#5c2e0e" stroke-width="1.5"/>
+      <rect x="17" y="17" width="6" height="9" rx="1" fill="${symbol.color}" stroke="#5c2e0e" stroke-width="1"/>
+      <circle cx="20" cy="22" r="1.6" fill="#ffe066"/>
+    </svg>`;
+  },
+  crown(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <path d="M5 30L3 12l9 7 8-13 8 13 9-7-2 18z" fill="${symbol.color}" stroke="#b8860b" stroke-width="1.5" stroke-linejoin="round"/>
+      <circle cx="20" cy="25" r="2.5" fill="#e74c3c"/>
+      <circle cx="10" cy="26" r="1.8" fill="#3498db"/>
+      <circle cx="30" cy="26" r="1.8" fill="#2ecc71"/>
+    </svg>`;
+  },
+  sapphire(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <polygon points="20,4 34,14 28,34 12,34 6,14" fill="${symbol.color}" stroke="#66b3ff" stroke-width="1.5"/>
+      <polygon points="20,4 27,14 20,34 13,14" fill="#4da3ff" opacity="0.6"/>
+      <line x1="6" y1="14" x2="34" y2="14" stroke="#cce6ff" stroke-width="1" opacity="0.7"/>
+    </svg>`;
+  },
+  treasure(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <rect x="5" y="19" width="30" height="15" rx="2" fill="#8B4513" stroke="#5c2e0e" stroke-width="1.5"/>
+      <path d="M5 19c0-6 6-9 15-9s15 3 15 9" fill="#a0522d" stroke="#5c2e0e" stroke-width="1.5"/>
+      <circle cx="13" cy="17" r="2.5" fill="${symbol.color}"/>
+      <circle cx="20" cy="14" r="2.5" fill="${symbol.color}"/>
+      <circle cx="27" cy="17" r="2.5" fill="${symbol.color}"/>
+      <rect x="17" y="19" width="6" height="8" rx="1" fill="#FFD700"/>
+    </svg>`;
+  },
+
+  // ---- Cyber machine ----
+  chip(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <rect x="9" y="9" width="22" height="22" rx="3" fill="#10222e" stroke="${symbol.color}" stroke-width="2"/>
+      <rect x="15" y="15" width="10" height="10" rx="1" fill="${symbol.color}" opacity="0.7"/>
+      <path d="M14 9V4M20 9V4M26 9V4M14 36v-5M20 36v-5M26 36v-5M9 14H4M9 20H4M9 26H4M36 14h-5M36 20h-5M36 26h-5" stroke="${symbol.color}" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>`;
+  },
+  data(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <ellipse cx="20" cy="9" rx="12" ry="5" fill="${symbol.color}" opacity="0.85"/>
+      <path d="M8 9v9c0 2.8 5.4 5 12 5s12-2.2 12-5V9" fill="none" stroke="${symbol.color}" stroke-width="2"/>
+      <path d="M8 18v9c0 2.8 5.4 5 12 5s12-2.2 12-5v-9" fill="none" stroke="${symbol.color}" stroke-width="2"/>
+      <ellipse cx="20" cy="18" rx="12" ry="5" fill="${symbol.color}" opacity="0.35"/>
+    </svg>`;
+  },
+  robot(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <rect x="9" y="12" width="22" height="19" rx="4" fill="#26343d" stroke="${symbol.color}" stroke-width="2"/>
+      <circle cx="16" cy="20" r="2.4" fill="${symbol.color}"/>
+      <circle cx="24" cy="20" r="2.4" fill="${symbol.color}"/>
+      <rect x="15" y="26" width="10" height="2" rx="1" fill="${symbol.color}" opacity="0.7"/>
+      <path d="M20 12V6" stroke="${symbol.color}" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="20" cy="5" r="2" fill="${symbol.color}"/>
+    </svg>`;
+  },
+  laser(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <path d="M6 34L34 6" stroke="${symbol.color}" stroke-width="4" stroke-linecap="round"/>
+      <path d="M6 34L34 6" stroke="#fff" stroke-width="1.2" stroke-linecap="round" opacity="0.8"/>
+      <circle cx="34" cy="6" r="3" fill="${symbol.color}"/>
+      <circle cx="6" cy="34" r="3" fill="${symbol.color}"/>
+    </svg>`;
+  },
+  hologram(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <polygon points="20,4 34,12 34,28 20,36 6,28 6,12" fill="${symbol.color}" opacity="0.18" stroke="${symbol.color}" stroke-width="1.5"/>
+      <polygon points="20,10 28,15 28,25 20,30 12,25 12,15" fill="${symbol.color}" opacity="0.35" stroke="${symbol.color}" stroke-width="1.2"/>
+      <polygon points="20,16 24,18 24,22 20,24 16,22 16,18" fill="${symbol.color}" opacity="0.8"/>
+    </svg>`;
+  },
+  core(symbol) {
+    return `<svg viewBox="0 0 40 40" fill="none">
+      <circle cx="20" cy="20" r="13" fill="none" stroke="${symbol.color}" stroke-width="2" opacity="0.5"/>
+      <circle cx="20" cy="20" r="8" fill="${symbol.color}" opacity="0.25"/>
+      <circle cx="20" cy="20" r="4" fill="${symbol.color}"/>
+      <path d="M20 3v5M20 32v5M3 20h5M32 20h5M8 8l3.5 3.5M28.5 28.5L32 32M32 8l-3.5 3.5M11.5 28.5L8 32" stroke="${symbol.color}" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>`;
+  },
   
   render(symbolId) {
-    const symbol = SYMBOLS[symbolId.toUpperCase()];
+    const symbol = findSymbolById(symbolId);
     if (!symbol) return '';
     const renderer = this[symbol.id];
     return renderer ? renderer(symbol) : '';
@@ -99,15 +285,17 @@ const SymbolRenderer = {
 
 const OutcomeGenerator = {
   /**
-   * Pick a random symbol based on weighted probabilities
+   * Pick a random symbol based on weighted probabilities from active machine
    */
   pickSymbol() {
-    let random = Math.random() * TOTAL_WEIGHT;
-    for (const symbol of SYMBOL_LIST) {
+    const symbolList = getSymbolList();
+    const totalWeight = getTotalWeight();
+    let random = Math.random() * totalWeight;
+    for (const symbol of symbolList) {
       random -= symbol.weight;
       if (random <= 0) return symbol.id;
     }
-    return SYMBOL_LIST[0].id; // fallback
+    return symbolList[0].id; // fallback
   },
   
   /**
@@ -154,8 +342,9 @@ const PayoutCalculator = {
     // Get middle row symbols (payline)
     const payline = [outcome[0][1], outcome[1][1], outcome[2][1]];
     
-    // Count wilds
-    const wildCount = payline.filter(s => s === SYMBOLS.WILD.id).length;
+    // Count wilds using active machine's WILD symbol
+    const wildSymbolId = Object.values(getActiveSymbols()).find(s => s.id === 'wild')?.id || 'wild';
+    const wildCount = payline.filter(s => s === wildSymbolId).length;
     
     // Check for 3 Wilds = JACKPOT
     if (wildCount === 3) {
@@ -170,7 +359,7 @@ const PayoutCalculator = {
     }
     
     // Find the non-wild symbol to match (if any)
-    const nonWildSymbols = payline.filter(s => s !== SYMBOLS.WILD.id);
+    const nonWildSymbols = payline.filter(s => s !== wildSymbolId);
     
     // If all are wilds (already handled) or no non-wild symbols, no regular win
     if (nonWildSymbols.length === 0) {
@@ -182,15 +371,15 @@ const PayoutCalculator = {
     const allMatch = nonWildSymbols.every(s => s === targetSymbol);
     
     if (allMatch) {
-      const symbol = SYMBOLS[targetSymbol.toUpperCase()];
-      const multiplier = symbol.multiplier;
+      const symbol = getActiveSymbols()[targetSymbol.toUpperCase()];
+      const multiplier = symbol ? symbol.multiplier : 1;
       return {
         isWin: true,
         multiplier: multiplier,
         payout: bet * multiplier,
         winType: 'regular',
         winningSymbols: payline,
-        message: `${symbol.name} ${multiplier}x!`
+        message: `${symbol ? symbol.name : targetSymbol} ${multiplier}x!`
       };
     }
     
@@ -206,12 +395,60 @@ const PayoutCalculator = {
   },
   
   /**
-   * Get symbol info by ID
+   * Get symbol info by ID from the active machine
    */
   getSymbolInfo(symbolId) {
-    return SYMBOLS[symbolId.toUpperCase()] || null;
+    return getActiveSymbols()[String(symbolId).toUpperCase()] || null;
   }
 };
+
+// ============================================================
+// MACHINE THEME + PAYTABLE
+// ============================================================
+
+/** Update the live machine frame, badge and paytable to match the active machine. */
+function applyMachineTheme() {
+  if (typeof document === 'undefined') return;
+  const machine = getActiveMachine();
+
+  const frame = document.getElementById('slot-machine');
+  if (frame && frame.classList) {
+    frame.classList.remove('machine-classic', 'machine-treasure', 'machine-cyber');
+    frame.classList.add('machine-' + machine.id);
+  }
+
+  const badge = document.getElementById('machine-name-badge');
+  if (badge) badge.textContent = machine.name.toUpperCase();
+
+  renderPaytable();
+}
+
+/** Rebuild the paytable sidebar from the active machine's symbol set. */
+function renderPaytable() {
+  if (typeof document === 'undefined') return;
+  const table = document.querySelector('.payout-table');
+  if (!table) return;
+
+  const machine = getActiveMachine();
+  const rows = Object.values(machine.symbols);
+  let html = '<div class="sidebar-label">PAYTABLE</div>';
+
+  rows.forEach(symbol => {
+    const isWild = symbol.id === 'wild';
+    const label = isWild ? 'Wild x3' : symbol.name;
+    const value = isWild
+      ? '<span class="pay-mult jackpot">JACKPOT</span>'
+      : '<span class="pay-mult gold">' + symbol.multiplier + 'x</span>';
+    html +=
+      '<div class="pay-row">' +
+      '<div class="pay-symbol-mini">' + SymbolRenderer.render(symbol.id) + '</div>' +
+      '<span class="pay-name">' + label + '</span>' +
+      value +
+      '</div>';
+  });
+
+  table.innerHTML = html;
+}
 
 // ============================================================
 // REEL ANIMATOR
@@ -257,6 +494,14 @@ const ReelAnimator = {
     div.dataset.symbol = symbolId;
     div.innerHTML = SymbolRenderer.render(symbolId);
     return div;
+  },
+  
+  /**
+   * Get symbol info by ID from active machine
+   */
+  getSymbolInfo(symbolId) {
+    const symbol = getActiveSymbols()[symbolId.toUpperCase()];
+    return symbol || null;
   },
   
   /**
@@ -528,21 +773,16 @@ const SlotMachine = {
   init() {
     this.bindUI();
     this.updateDisplay();
+    // Apply the default (or restored) machine theme/paytable
+    applyMachineTheme();
   },
   
   /**
-   * Bind UI event listeners
+   * UI event wiring is owned by main.js (Stage 3 integration) so each control
+   * has exactly one handler. Kept as a no-op hook for init().
    */
   bindUI() {
-    // Spin button
-    const spinBtn = document.getElementById('spin-btn');
-    spinBtn.addEventListener('click', () => this.handleSpin());
-    
-    // Bet controls (for future Stage 3, but wire up display now)
-    document.getElementById('bet-up').addEventListener('click', () => this.adjustBet(10));
-    document.getElementById('bet-down').addEventListener('click', () => this.adjustBet(-10));
-    document.getElementById('bet-min').addEventListener('click', () => this.setBet(10));
-    document.getElementById('bet-max').addEventListener('click', () => this.setBet(100));
+    // Intentionally empty — see main.js initSlotMachine().
   },
   
   /**
@@ -805,6 +1045,39 @@ const SlotMachine = {
       lastOutcome: this.lastOutcome,
       lastPayoutResult: this.lastPayoutResult
     };
+  },
+
+  /**
+   * Switch to a different machine. Validation and persistence live in
+   * Progression (the owner of saved state); this method only delegates.
+   * @param {string} machineId - 'classic' | 'treasure' | 'cyber'
+   * @returns {boolean} true when the machine was selected
+   */
+  switchMachine(machineId) {
+    if (!MACHINE_DEFS[machineId]) return false;
+    if (window.Progression && typeof window.Progression.selectMachine === 'function') {
+      return window.Progression.selectMachine(machineId);
+    }
+
+    // Fallback used only if Progression is unavailable (e.g. isolated tests)
+    const level = 1;
+    if (level < MACHINE_DEFS[machineId].unlockLevel) {
+      if (typeof showToast === 'function') {
+        showToast('Reach level ' + MACHINE_DEFS[machineId].unlockLevel + ' to unlock this machine', 3000);
+      }
+      return false;
+    }
+    this.applyMachine(machineId);
+    return true;
+  },
+
+  /**
+   * Apply a machine to the live game view (theme, badge, paytable).
+   * Progression calls this after restoring/selecting a machine.
+   */
+  applyMachine(machineId) {
+    setActiveMachineId(machineId);
+    applyMachineTheme();
   }
 };
 
@@ -900,11 +1173,18 @@ const TestRunner = {
 // Make available globally for main.js and testing
 window.SlotMachine = SlotMachine;
 window.SYMBOLS = SYMBOLS;
+window.MACHINE_DEFS = MACHINE_DEFS;
 window.OutcomeGenerator = OutcomeGenerator;
 window.PayoutCalculator = PayoutCalculator;
 window.ReelAnimator = ReelAnimator;
 window.SymbolRenderer = SymbolRenderer;
 window.TestRunner = TestRunner;
+window.getActiveMachineId = getActiveMachineId;
+window.setActiveMachineId = setActiveMachineId;
+window.findSymbolById = findSymbolById;
+window.getAllSymbolIds = getAllSymbolIds;
+window.applyMachineTheme = applyMachineTheme;
+window.renderPaytable = renderPaytable;
 
 // Auto-run tests in development (can be removed in production)
 // TestRunner.runPayoutTests();

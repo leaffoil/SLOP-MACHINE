@@ -23,6 +23,11 @@ function showSection(id) {
 
   const btn = document.querySelector(`.nav-btn[data-section="${id}"]`);
   if (btn) btn.classList.add('active');
+
+  // Stage 5: refresh machine/mission state when navigating (handles date change)
+  if (window.Progression && window.Progression.state) {
+    window.Progression.updateUI();
+  }
 }
 
 navBtns.forEach(btn => {
@@ -130,6 +135,15 @@ function initSlotMachine() {
     }
   });
   
+  // ---- Machine Selection ----
+  // Handle machine card clicks. switchMachine validates the lock state.
+  document.querySelectorAll('.machine-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const machineId = card.dataset.machine;
+      if (machineId) SlotMachine.switchMachine(machineId);
+    });
+  });
+  
   // Set up callbacks
   SlotMachine.onSpinStart = (outcome, payoutResult) => {
     if (payoutResult.winType === 'jackpot') {
@@ -159,7 +173,7 @@ function initSlotMachine() {
 
     if (payoutResult.isWin) {
       if (payoutResult.winType === 'jackpot') {
-        showToast('🎰 JACKPOT! ' + payoutResult.payout.toLocaleString() + ' COINS!', 4000);
+        showToast('JACKPOT! ' + payoutResult.payout.toLocaleString() + ' COINS!', 4000);
       } else {
         showToast('WIN! ' + payoutResult.message + ' +' + payoutResult.payout.toLocaleString(), 3000);
       }

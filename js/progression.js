@@ -65,6 +65,37 @@ const ACHIEVEMENT_DEFS = [
   { id: 'prestige_i',       name: 'Prestige I',       desc: 'Reach your first prestige',   requirement: 'prestige', target: 1, lockedByDefault: true }
 ];
 
+// ---- Daily mission definitions (fixed daily set, unique ids) ----
+const MISSION_DEFS = [
+  {
+    id: 'spins_10',
+    name: 'Complete 10 Spins',
+    description: 'Spin the reels 10 times',
+    progressKey: 'spins',
+    requirement: 10,
+    rewardCoins: 100,
+    rewardXP: 0
+  },
+  {
+    id: 'coins_500',
+    name: 'Win 500 Coins',
+    description: 'Win a total of 500 coins',
+    progressKey: 'coinsWon',
+    requirement: 500,
+    rewardCoins: 0,
+    rewardXP: 50
+  },
+  {
+    id: 'symbols_1',
+    name: 'Collect a New Symbol',
+    description: 'Add a new symbol to your collection',
+    progressKey: 'symbolsCollected',
+    requirement: 1,
+    rewardCoins: 0,
+    rewardXP: 200
+  }
+];
+
 const Progression = {
   state: null,
   _lastAwardedToken: undefined,
@@ -88,8 +119,33 @@ const Progression = {
       achievements,
       collected: [],
       cosmeticRewards: [],
-      levelRewards: []
+      levelRewards: [],
+
+      // Stage 5: machine selection and daily missions
+      machineSelected: 'classic',
+      machineUnlocked: ['classic'],
+      dailyMissions: this._freshDailyMissions('')
     };
+  },
+
+  /** Fresh daily mission progress for a given local-date key. */
+  _freshDailyMissions(dateKey) {
+    return {
+      date: dateKey || '',
+      spins: 0,
+      coinsWon: 0,
+      symbolsCollected: [],
+      completed: MISSION_DEFS.map(() => false),
+      claimed: MISSION_DEFS.map(() => false)
+    };
+  },
+
+  /** Local calendar date key (YYYY-MM-DD) — not a 24h countdown. */
+  _localDateKey(date) {
+    const d = date instanceof Date ? date : new Date();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + month + '-' + day;
   },
 
   init() {
@@ -97,7 +153,181 @@ const Progression = {
     this.state = this._defaultState();
     this.load();
     this.syncLevel();
+
+    // Stage 5: restore machine selection, unlock state and daily missions
+    this._ensureDailyReset();
+    this._recalculateMachines();
+    this._applySelectedMachine();
+    this._bindMissionUI();
+
     this.updateUI();
+    this.save();
+  },
+
+  // ----------------------------------------------------------
+  // Stage 5: machines
+  // ----------------------------------------------------------
+
+  /** Machines currently available at the player's level. */
+  _unlockedMachineIds() {
+    if (typeof MACHINE_DEFS === 'undefined') return ['classic'];
+    return Object.values(MACHINE_DEFS)
+      .filter(m => this.state.level >= m.unlockLevel)
+      .map(m => m.id);
+  },
+
+  /** Recalculate unlock availability from level (saved state is informational). */
+  _recalculateMachines() {
+    const unlocked = this._unlockedMachineIds();
+    this.state.machineUnlocked = unlocked;
+
+    // Never leave the player on a machine they cannot use
+    if (unlocked.indexOf(this.state.machineSelected) === -1) {
+      this.state.machineSelected = 'classic';
+    }
+  },
+
+  /** Push the selected machine into the game view. */
+  _applySelectedMachine() {
+    if (window.SlotMachine && typeof window.SlotMachine.applyMachine === 'function') {
+      window.SlotMachine.applyMachine(this.state.machineSelected);
+    } else if (typeof window.setActiveMachineId === 'function') {
+      window.setActiveMachineId(this.state.machineSelected);
+    }
+  },
+
+  /**
+   * Select an unlocked machine. Persists immediately and updates the UI.
+   * Returns false when the machine is unknown or still locked.
+   */
+  selectMachine(machineId) {
+    if (!this.state) return false;
+    if (typeof MACHINE_DEFS === 'undefined' || !MACHINE_DEFS[machineId]) return false;
+    const machine = MACHINE_DEFS[machineId];
+
+    if (this.state.level < machine.unlockLevel) {
+      if (typeof showToast === 'function') {
+        showToast('Reach level ' + machine.unlockLevel + ' to unlock the ' + machine.name, 3000);
+      }
+      return false;
+    }
+
+    this.state.machineSelected = machineId;
+    this._recalculateMachines();
+    this.save();
+    this._applySelectedMachine();
+    this.updateMachineUI();
+
+    if (typeof showToast === 'function') {
+      showToast('Switched to ' + machine.name, 2000);
+    }
+    return true;
+  },
+
+  // ----------------------------------------------------------
+  // Stage 5: daily missions
+  // ----------------------------------------------------------
+
+  /** Reset mission progress when the local calendar date changes. */
+  _ensureDailyReset() {
+    if (!this.state) return false;
+    const today = this._localDateKey();
+    const dm = this.state.dailyMissions;
+    if (!dm || dm.date !== today) {
+      this.state.dailyMissions = this._freshDailyMissions(today);
+      return true;
+    }
+    return false;
+  },
+
+  /** Current progress value for a mission definition. */
+  _missionProgress(def) {
+    const dm = this.state.dailyMissions;
+    if (!dm) return 0;
+    switch (def.progressKey) {
+      case 'spins': return dm.spins;
+      case 'coinsWon': return dm.coinsWon;
+      case 'symbolsCollected': return dm.symbolsCollected.length;
+      default: return 0;
+    }
+  },
+
+  /** Recompute the completed flags from current progress. */
+  _recomputeMissionCompletion() {
+    const dm = this.state.dailyMissions;
+    if (!dm) return;
+    dm.completed = MISSION_DEFS.map(def => this._missionProgress(def) >= def.requirement);
+  },
+
+  /** Record progress for one completed spin. */
+  _recordMissionProgress(payoutResult, newlyCollected) {
+    this._ensureDailyReset();
+    const dm = this.state.dailyMissions;
+
+    dm.spins += 1;
+    if (payoutResult && payoutResult.isWin && payoutResult.payout > 0) {
+      // Track actual winnings, never the wager
+      dm.coinsWon += payoutResult.payout;
+    }
+    (newlyCollected || []).forEach(id => {
+      if (dm.symbolsCollected.indexOf(id) === -1) dm.symbolsCollected.push(id);
+    });
+
+    this._recomputeMissionCompletion();
+  },
+
+  /**
+   * Claim a completed mission exactly once. Coins use Economy, XP uses
+   * Progression.addXP. The claimed flag is persisted before awarding.
+   */
+  claimMission(missionId) {
+    if (!this.state) return false;
+    const index = MISSION_DEFS.findIndex(def => def.id === missionId);
+    if (index === -1) return false;
+
+    this._ensureDailyReset();
+    this._recomputeMissionCompletion();
+
+    const dm = this.state.dailyMissions;
+    if (!dm.completed[index] || dm.claimed[index]) return false;
+
+    dm.claimed[index] = true;
+    this.save(); // persist the claim before awarding anything
+
+    const def = MISSION_DEFS[index];
+    if (def.rewardCoins > 0 && window.Economy && typeof window.Economy.addBalance === 'function') {
+      window.Economy.addBalance(def.rewardCoins);
+    }
+    if (def.rewardXP > 0) {
+      this.addXP(def.rewardXP);
+    }
+
+    this.save();
+    this.updateMissionsUI();
+
+    if (typeof showToast === 'function') {
+      const reward = def.rewardCoins > 0
+        ? '+' + def.rewardCoins + ' coins'
+        : '+' + def.rewardXP + ' XP';
+      showToast('Mission complete: ' + def.name + ' — ' + reward, 2800);
+    }
+    return true;
+  },
+
+  /** Attach claim handlers once. */
+  _bindMissionUI() {
+    if (typeof document === 'undefined' || this._missionUIbound) return;
+    this._missionUIbound = true;
+
+    document.querySelectorAll('.mission-card').forEach(card => {
+      const btn = card.querySelector('.mission-claim-btn');
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('disabled') || btn.classList.contains('claimed')) return;
+        const id = card.dataset ? card.dataset.mission : null;
+        if (id) this.claimMission(id);
+      });
+    });
   },
 
   // ----------------------------------------------------------
@@ -136,9 +366,15 @@ const Progression = {
 
   /** Run the level-up loop, recording rewards per level (exactly once each). */
   _runLevelUps(levelUps) {
+    const startLevel = this.state.level;
     while (this.state.level < MAX_LEVEL && this.state.xp >= this.xpForLevel(this.state.level + 1)) {
       this.state.level += 1;
       this._claimLevelReward(this.state.level, levelUps);
+    }
+    // Stage 5: a new level may unlock a machine
+    if (this.state.level !== startLevel && typeof MACHINE_DEFS !== 'undefined') {
+      this._recalculateMachines();
+      this.updateMachineUI();
     }
   },
 
@@ -157,7 +393,7 @@ const Progression = {
     const el = typeof document !== 'undefined' ? document.getElementById('header-level') : null;
     if (el && el.classList) el.classList.add('anim-level-up-pop');
     if (typeof showToast === 'function') {
-      showToast('🎉 LEVEL ' + lv.level + '! Reward: +' + lv.reward + ' coins', 2600);
+      showToast('LEVEL ' + lv.level + '! Reward: +' + lv.reward + ' coins', 2600);
     }
     if (el && el.classList) {
       setTimeout(() => el.classList.remove('anim-level-up-pop'), 600);
@@ -199,7 +435,10 @@ const Progression = {
     if (xp > 0) this.addXP(xp);
 
     // Collections: discover symbols from the completed spin
-    this._discoverSymbols(outcome);
+    const newlyCollected = this._discoverSymbols(outcome);
+
+    // Daily missions: count the completed spin and its results
+    this._recordMissionProgress(payoutResult, newlyCollected);
 
     // Achievements: progress + unlock (exactly once each)
     const newlyUnlocked = this._syncAchievementProgress();
@@ -247,7 +486,7 @@ const Progression = {
 
   _notifyAchievement(def) {
     if (typeof showToast === 'function') {
-      showToast('🏅 Unlocked: ' + def.name + ' — ' + def.desc, 3000);
+      showToast('Unlocked: ' + def.name + ' — ' + def.desc, 3000);
     }
   },
 
@@ -304,39 +543,58 @@ const Progression = {
   // Collections
   // ----------------------------------------------------------
 
-  /** Symbols the game actually uses (existing SYMBOLS export, nothing invented). */
+  /**
+   * Symbols the game actually uses. Includes every machine's symbol set so
+   * collection missions work on Classic, Treasure and Cyber.
+   */
   _collectibleIds() {
+    if (typeof window !== 'undefined' && typeof window.getAllSymbolIds === 'function') {
+      return window.getAllSymbolIds();
+    }
     if (typeof window !== 'undefined' && window.SYMBOLS) {
       return Object.values(window.SYMBOLS).map(s => s.id);
     }
     return [];
   },
 
-  /** Add newly seen symbols from a completed spin outcome to the collection. */
+  _symbolLabel(id) {
+    if (typeof window !== 'undefined' && typeof window.findSymbolById === 'function') {
+      const symbol = window.findSymbolById(id);
+      if (symbol) return symbol.name;
+    }
+    return id === 'seven' ? 'Lucky 7' : id.charAt(0).toUpperCase() + id.slice(1);
+  },
+
+  /**
+   * Add newly seen symbols from a completed spin outcome to the collection.
+   * @returns {string[]} ids that were newly collected by this spin
+   */
   _discoverSymbols(outcome) {
-    if (!outcome || !Array.isArray(outcome)) return;
+    if (!outcome || !Array.isArray(outcome)) return [];
     const payline = [outcome[0] && outcome[0][1], outcome[1] && outcome[1][1], outcome[2] && outcome[2][1]];
     const seen = {};
+    const collectibles = this._collectibleIds();
     this.state.collected.forEach(id => { seen[id] = true; });
-    let discovered = false;
+    const newlyCollected = [];
 
     payline.forEach(id => {
       if (!id || seen[id]) return;
       // Ignore symbols that are not real collectibles
-      if (this._collectibleIds().indexOf(id) === -1) return;
+      if (collectibles.indexOf(id) === -1) return;
       this.state.collected.push(id);
       seen[id] = true;
-      discovered = true;
+      newlyCollected.push(id);
       if (typeof showToast === 'function') {
-        showToast('🔍 Discovered: ' + (id === 'seven' ? 'Lucky 7' : id.charAt(0).toUpperCase() + id.slice(1)) + ' — added to your collection', 2500);
+        showToast('Discovered: ' + this._symbolLabel(id) + ' — added to your collection', 2500);
       }
     });
 
-    if (discovered) {
+    if (newlyCollected.length > 0) {
       this._syncAchievementProgress();
       this._maybeCompleteCollection();
       this.updateCollectionUI();
     }
+    return newlyCollected;
   },
 
   /** Unlock the cosmetic reward once every collectible symbol is collected. */
@@ -352,7 +610,7 @@ const Progression = {
 
     this.state.cosmeticRewards.push(reward.id);
     if (typeof showToast === 'function') {
-      showToast('🌟 Cosmetic reward unlocked: ' + reward.name + ' — collection complete!', 3500);
+      showToast('Cosmetic reward unlocked: ' + reward.name + ' — collection complete!', 3500);
     }
     this.updateCollectionUI();
   },
@@ -363,17 +621,34 @@ const Progression = {
     const collectibles = this._collectibleIds();
     const grid = document.getElementById('collection-grid');
 
-    // Update existing cards (match by data-symbol)
-    if (grid && grid.querySelectorAll) {
-      const cards = grid.querySelectorAll('.collect-card');
-      cards.forEach(card => {
-        const symbolId = card.dataset && card.dataset.symbol;
-        if (!symbolId || collectibles.indexOf(symbolId) === -1) return;
-        const isCollected = this.state.collected.indexOf(symbolId) !== -1;
-        card.classList.toggle('unlocked-card', isCollected);
-        card.classList.toggle('locked-card', !isCollected);
-        const icon = card.querySelector('.collect-icon');
-        if (icon) icon.classList.toggle('collected', isCollected);
+    // Update existing cards (match by data-symbol), creating missing ones
+    if (grid) {
+      if (grid.querySelectorAll) {
+        const cards = grid.querySelectorAll('.collect-card');
+        cards.forEach(card => {
+          const symbolId = card.dataset && card.dataset.symbol;
+          if (!symbolId || collectibles.indexOf(symbolId) === -1) return;
+          const isCollected = this.state.collected.indexOf(symbolId) !== -1;
+          card.classList.toggle('unlocked-card', isCollected);
+          card.classList.toggle('locked-card', !isCollected);
+          const icon = card.querySelector('.collect-icon');
+          if (icon) icon.classList.toggle('collected', isCollected);
+        });
+      }
+
+      // Add cards for symbols from the newer machines (Treasure / Cyber)
+      const existing = {};
+      grid.querySelectorAll('.collect-card').forEach(card => {
+        if (card.dataset && card.dataset.symbol) existing[card.dataset.symbol] = true;
+      });
+      collectibles.forEach(symbolId => {
+        if (existing[symbolId]) return;
+        const card = document.createElement('div');
+        card.className = 'collect-card locked-card';
+        card.dataset.symbol = symbolId;
+        card.innerHTML = '<div class="collect-icon">?</div>' +
+          '<div class="collect-name">' + this._symbolLabel(symbolId) + '</div>';
+        grid.appendChild(card);
       });
     }
 
@@ -434,6 +709,134 @@ const Progression = {
     this.updateHeaderLevel();
     this.updateAchievements();
     this.updateCollectionUI();
+
+    // Stage 5: update machine and mission UI
+    if (typeof document !== 'undefined') {
+      this.updateMachineUI();
+      this.updateMissionsUI();
+    }
+  },
+
+  /** Render machine cards: lock overlays, selected state and unlock count. */
+  updateMachineUI() {
+    if (typeof document === 'undefined' || typeof MACHINE_DEFS === 'undefined') return;
+
+    const unlocked = this._unlockedMachineIds();
+    this.state.machineUnlocked = unlocked;
+    const selected = this.state.machineSelected;
+
+    document.querySelectorAll('.machine-card').forEach(card => {
+      const machineId = card.dataset ? card.dataset.machine : null;
+      const machine = machineId ? MACHINE_DEFS[machineId] : null;
+      if (!machine) return;
+
+      const isUnlocked = unlocked.indexOf(machineId) !== -1;
+      const isSelected = selected === machineId && isUnlocked;
+
+      card.classList.toggle('locked', !isUnlocked);
+      card.classList.toggle('active-machine', isSelected);
+
+      const overlay = card.querySelector('.lock-overlay');
+      if (overlay && overlay.style) overlay.style.display = isUnlocked ? 'none' : 'flex';
+
+      const statusEl = card.querySelector('.machine-status');
+      if (statusEl) {
+        statusEl.classList.remove('unlocked', 'locked-status', 'selected');
+        if (isSelected) {
+          statusEl.textContent = 'SELECTED';
+          statusEl.classList.add('selected');
+        } else if (!isUnlocked) {
+          statusEl.textContent = 'UNLOCK AT LEVEL ' + machine.unlockLevel;
+          statusEl.classList.add('locked-status');
+        } else {
+          statusEl.textContent = 'UNLOCKED';
+          statusEl.classList.add('unlocked');
+        }
+      }
+    });
+
+    const countEl = document.getElementById('stat-machines');
+    if (countEl) countEl.textContent = unlocked.length + ' / ' + Object.keys(MACHINE_DEFS).length;
+  },
+
+  /** Render daily mission progress, completion and claim states. */
+  updateMissionsUI() {
+    if (typeof document === 'undefined' || !this.state) return;
+    if (this._ensureDailyReset()) this.save();
+    const dm = this.state.dailyMissions;
+    if (!dm) return;
+
+    const cards = document.querySelectorAll('.mission-card');
+    cards.forEach((card, index) => {
+      const id = card.dataset ? card.dataset.mission : null;
+      let def = id ? MISSION_DEFS.find(d => d.id === id) : null;
+      if (!def) def = MISSION_DEFS[index];
+      if (!def) return;
+
+      const defIndex = MISSION_DEFS.indexOf(def);
+      const progress = this._missionProgress(def);
+      const completed = Boolean(dm.completed[defIndex]) || progress >= def.requirement;
+      const claimed = Boolean(dm.claimed[defIndex]);
+
+      const nameEl = card.querySelector('.mission-card-name');
+      if (nameEl) nameEl.textContent = def.name;
+
+      const descEl = card.querySelector('.mission-card-desc');
+      if (descEl) descEl.textContent = def.description;
+
+      const rewardEl = card.querySelector('.mission-card-reward');
+      if (rewardEl) {
+        rewardEl.innerHTML = 'Reward: ' + (def.rewardCoins > 0
+          ? '<span class="gold">+' + def.rewardCoins + ' Coins</span>'
+          : '<span class="purple">+' + def.rewardXP + ' XP</span>');
+      }
+
+      const fill = card.querySelector('.mission-bar-fill');
+      if (fill && fill.style) {
+        const pct = def.requirement > 0 ? Math.min(100, Math.round((progress / def.requirement) * 100)) : 0;
+        fill.style.width = pct + '%';
+      }
+
+      const fraction = card.querySelector('.mission-fraction');
+      if (fraction) {
+        const shown = Math.min(progress, def.requirement);
+        fraction.textContent = shown + ' / ' + def.requirement;
+      }
+
+      card.classList.toggle('mission-complete', completed && !claimed);
+      card.classList.toggle('mission-claimed', claimed);
+
+      const btn = card.querySelector('.mission-claim-btn');
+      if (btn) {
+        btn.classList.remove('disabled', 'claimable', 'claimed');
+        if (claimed) {
+          btn.textContent = 'CLAIMED';
+          btn.classList.add('claimed');
+        } else if (completed) {
+          btn.textContent = 'CLAIM';
+          btn.classList.add('claimable');
+        } else {
+          btn.textContent = 'PROGRESS';
+          btn.classList.add('disabled');
+        }
+      }
+    });
+
+    // Sidebar mini mission list (first two missions)
+    const miniItems = document.querySelectorAll('#mission-mini-list .mission-item');
+    MISSION_DEFS.slice(0, miniItems.length).forEach((def, i) => {
+      const item = miniItems[i];
+      const progress = this._missionProgress(def);
+      const nameEl = item.querySelector('.mission-name');
+      const fill = item.querySelector('.mission-prog-fill');
+      const count = item.querySelector('.mission-count');
+      if (nameEl) nameEl.textContent = def.name;
+      if (fill && fill.style) {
+        const pct = def.requirement > 0 ? Math.min(100, Math.round((progress / def.requirement) * 100)) : 0;
+        fill.style.width = pct + '%';
+      }
+      if (count) count.textContent = Math.min(progress, def.requirement) + ' / ' + def.requirement;
+    });
   },
 
   // ----------------------------------------------------------
@@ -477,6 +880,28 @@ const Progression = {
     this.state.spins = num(data.spins, 0);
     this.state.wins = num(data.wins, 0);
     this.state.jackpots = num(data.jackpots, 0);
+
+    // Stage 5: machine selection and daily missions
+    const knownMachine = typeof MACHINE_DEFS !== 'undefined' && data.machineSelected && MACHINE_DEFS[data.machineSelected];
+    this.state.machineSelected = knownMachine ? data.machineSelected : 'classic';
+    this.state.machineUnlocked = Array.isArray(data.machineUnlocked)
+      ? data.machineUnlocked.filter(id => typeof id === 'string')
+      : ['classic'];
+
+    // Daily missions: validate every field; unknown/corrupt data starts fresh
+    const src = data.dailyMissions && typeof data.dailyMissions === 'object' ? data.dailyMissions : {};
+    const dateRaw = typeof src.date === 'string' ? src.date : (typeof src.lastResetDate === 'string' ? src.lastResetDate : '');
+    const symbols = Array.isArray(src.symbolsCollected)
+      ? src.symbolsCollected.filter(id => typeof id === 'string').filter((v, i, a) => a.indexOf(v) === i)
+      : [];
+    this.state.dailyMissions = {
+      date: dateRaw,
+      spins: num(src.spins, 0),
+      coinsWon: num(src.coinsWon, 0),
+      symbolsCollected: symbols,
+      completed: MISSION_DEFS.map((def, i) => Boolean(src.completed && src.completed[i])),
+      claimed: MISSION_DEFS.map((def, i) => Boolean(src.claimed && src.claimed[i]))
+    };
 
     // Achievements: keep only known ids, validate progress
     const ach = data.achievements && typeof data.achievements === 'object' ? data.achievements : {};

@@ -308,6 +308,23 @@ html, body {
   width: 100%;
   max-width: 480px;
   position: relative;
+  transition: border-color 0.35s ease, box-shadow 0.35s ease;
+}
+
+/* Machine visual identities */
+.slot-machine.machine-treasure {
+  border-color: #2ecc71;
+  box-shadow: 0 0 40px rgba(46,204,113,0.18), inset 0 0 40px rgba(0,0,0,0.5);
+}
+.slot-machine.machine-treasure .reels-container {
+  border-color: rgba(46,204,113,0.25);
+}
+.slot-machine.machine-cyber {
+  border-color: #00d4ff;
+  box-shadow: 0 0 40px rgba(0,212,255,0.2), inset 0 0 40px rgba(0,0,0,0.5);
+}
+.slot-machine.machine-cyber .reels-container {
+  border-color: rgba(0,212,255,0.25);
 }
 
 /* Chrome top lights */
@@ -606,6 +623,7 @@ html, body {
 .machine-status { margin-top: 10px; font-size: 0.65rem; letter-spacing: 2px; padding: 4px 14px; border-radius: 100px; font-weight: 700; }
 .machine-status.unlocked { background: rgba(46,204,113,0.15); color: var(--green); border: 1px solid rgba(46,204,113,0.3); }
 .machine-status.locked-status { background: rgba(255,255,255,0.05); color: var(--text-dim); border: 1px solid var(--border); }
+.machine-status.selected { background: rgba(255,215,0,0.16); color: var(--gold); border: 1px solid rgba(255,215,0,0.45); box-shadow: 0 0 10px rgba(255,215,0,0.2); }
 
 .lock-overlay {
   position: absolute;
@@ -749,7 +767,7 @@ html, body {
 .missions-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   max-width: 640px;
   margin: 0 auto;
 }
@@ -757,44 +775,64 @@ html, body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 18px;
+  padding: 20px;
   display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 12px;
 }
 .mission-card-info { flex: 1; min-width: 150px; }
-.mission-card-name { font-size: 0.9rem; font-weight: 600; margin-bottom: 4px; }
+.mission-card-name { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.mission-card-desc { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; line-height: 1.4; }
 .mission-card-reward { font-size: 0.75rem; color: var(--text-muted); }
 .mission-card-progress { flex: 2; min-width: 160px; }
 .mission-bar-wrap { height: 8px; background: rgba(255,255,255,0.05); border-radius: 100px; overflow: hidden; margin-bottom: 5px; }
 .mission-bar-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--neon)); border-radius: 100px; transition: width 0.4s ease; }
 .mission-fraction { font-size: 0.72rem; color: var(--text-muted); }
 .mission-claim-btn {
-  padding: 8px 18px;
-  background: linear-gradient(135deg, var(--gold-dark), var(--gold));
-  color: #000;
-  border: none;
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 1px;
+  color: var(--text-primary);
+  font-size: 0.75rem;
   cursor: pointer;
-  transition: all var(--transition);
-  white-space: nowrap;
+  transition: all 0.2s ease;
 }
-.mission-claim-btn:hover { box-shadow: var(--shadow-gold); }
+.mission-claim-btn:hover:not(.disabled):not(.claimed) {
+  box-shadow: var(--shadow-gold);
+  border-color: var(--gold);
+}
+.mission-claim-btn.claimable {
+  background: rgba(255,215,0,0.12);
+  border-color: var(--gold);
+  color: var(--gold);
+  font-weight: 700;
+}
+.mission-claim-btn.claimable:hover {
+  background: rgba(255,215,0,0.22);
+}
+.mission-card.mission-complete {
+  border-color: rgba(255,215,0,0.45);
+  box-shadow: 0 0 16px rgba(255,215,0,0.12);
+}
+.mission-card.mission-claimed {
+  border-color: rgba(46,204,113,0.35);
+}
 .mission-claim-btn.disabled {
-  background: rgba(255,255,255,0.05);
+  background: transparent;
   color: var(--text-dim);
-  cursor: not-allowed;
-  box-shadow: none;
+  cursor: default;
 }
 .mission-claim-btn.claimed {
-  background: rgba(46,204,113,0.15);
-  color: var(--green);
-  border: 1px solid rgba(46,204,113,0.3);
+  background: var(--gold);
+  color: var(--bg-primary);
   cursor: default;
+}
+.mission-claim-btn.claimed:hover {
+  box-shadow: none;
+  border-color: var(--gold);
 }
 
 /* ========================================

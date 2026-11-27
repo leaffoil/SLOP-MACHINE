@@ -1,0 +1,767 @@
+/**
+ * Stage 5 test runner — runs the browser scripts in a Node VM with a small
+ * DOM/localStorage stub. No browser is required.
+ *
+ * Usage: node tests/run-tests.js
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const ROOT = path.resolve(__dirname, '..');
+const quietConsole = { log() {}, warn() {}, error() {} };
+
+// ------------------------------------------------------------
+// Minimal DOM / storage stubs
+// ------------------------------------------------------------
+
+class FakeClassList {
+  constructor() { this._set = new Set(); }
+  add(...names) { names.forEach(n => this._set.add(n)); }
+  remove(...names) { names.forEach(n => this._set.delete(n)); }
+  toggle(name, force) {
+    const on = force === undefined ? !this._set.has(name) : Boolean(force);
+    if (on) this._set.add(name); else this._set.delete(name);
+    return on;
+  }
+  contains(name) { return this._set.has(name); }
+  setAll(names) { this._set.clear(); names.forEach(n => this._set.add(n)); }
+  get value() { return Array.from(this._set).join(' '); }
+}
+
+/** Very small selector matcher supporting ".class", "#id", "tag", ".a .b",
+ *  "#id .class" and comma-separated lists. Enough for the app's queries. */
+function matchesSelector(el, selector) {
+  const groups = String(selector).split(',').map(s => s.trim());
+  return groups.some(group => {
+    const parts = group.split(/\s+/);
+    let candidates = [el];
+    // Walk from the right-most compound selector to the left.
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i];
+      const next = [];
+      candidates.forEach(node => {
+        if (matchesCompound(node, part)) next.push(node);
+        if (i > 0 && node._parent) next.push(node._parent);
+      });
+      candidates = next;
+    }
+    return candidates.indexOf(el) !== -1;
+  });
+}
+
+function matchesCompound(el, part) {
+  if (!part || part === '*') return true;
+  const idMatch = part.match(/#([\w-]+)/g) || [];
+  const classMatch = part.match(/\.([\w-]+)/g) || [];
+  const tagMatch = part.match(/^[a-zA-Z][\w-]*/);
+  if (tagMatch && el.tagName !== tagMatch[0].toUpperCase()) return false;
+  if (idMatch.some(m => el.id !== m.slice(1))) return false;
+  if (classMatch.some(m => !el.classList.contains(m.slice(1)))) return false;
+  return true;
+}
+
+function collect(el, selector, out) {
+  el.children.forEach(child => {
+    if (matchesSelector(child, selector)) out.push(child);
+    collect(child, selector, out);
+  });
+}
+
+class FakeElement {
+  constructor(tag) {
+    this.tagName = String(tag || 'div').toUpperCase();
+    this.classList = new FakeClassList();
+    this.style = {};
+    this.dataset = {};
+    this.children = [];
+    this._parent = null;
+    this.id = '';
+    this._className = '';
+    this.textContent = '';
+    this._innerHTML = '';
+    this.disabled = false;
+    this._listeners = {};
+  }
+  get className() { return this.classList.value; }
+  set className(value) {
+    this._className = String(value || '');
+    this.classList.setAll(this._className.split(/\s+/).filter(Boolean));
+  }
+  get innerHTML() { return this._innerHTML; }
+  set innerHTML(html) {
+    this._innerHTML = String(html);
+    if (html === '') {
+      this.children.forEach(c => { c._parent = null; });
+      this.children = [];
+    }
+  }
+  addEventListener(type, fn) {
+    (this._listeners[type] || (this._listeners[type] = [])).push(fn);
+  }
+  removeEventListener(type, fn) {
+    const list = this._listeners[type];
+    if (!list) return;
+    const i = list.indexOf(fn);
+    if (i !== -1) list.splice(i, 1);
+  }
+  click() {
+    (this._listeners.click || []).forEach(fn => fn({ target: this }));
+  }
+  appendChild(child) { child._parent = this; this.children.push(child); return child; }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  querySelectorAll(selector) {
+    const out = [];
+    collect(this, selector, out);
+    return out;
+  }
+  closest(selector) {
+    let node = this;
+    while (node) {
+      if (matchesCompound(node, selector.replace(/\s/g, ''))) return node;
+      node = node._parent;
+    }
+    return null;
+  }
+  matches(selector) { return matchesSelector(this, selector); }
+}
+
+class FakeDocument {
+  constructor() {
+    this.readyState = 'loading';
+    this._elements = {};
+    this._listeners = {};
+    this.body = new FakeElement('body');
+  }
+  getElementById(id) {
+    if (!this._elements[id]) {
+      const el = new FakeElement('div');
+      el.id = id;
+      this._elements[id] = el;
+      this.body.appendChild(el);
+    }
+    return this._elements[id];
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  querySelectorAll(selector) {
+    const out = [];
+    collect(this.body, selector, out);
+    return out;
+  }
+  createElement(tag) { return new FakeElement(tag); }
+  addEventListener(type, fn) {
+    (this._listeners[type] || (this._listeners[type] = [])).push(fn);
+  }
+  dispatch(type, event) {
+    (this._listeners[type] || []).forEach(fn => fn(event || {}));
+  }
+}
+
+function createStorage() {
+  const map = new Map();
+  return {
+    getItem(key) { return map.has(key) ? map.get(key) : null; },
+    setItem(key, value) { map.set(key, String(value)); },
+    removeItem(key) { map.delete(key); },
+    clear() { map.clear(); },
+    _map: map
+  };
+}
+
+function createWorld(storage, options) {
+  const opts = options || {};
+  const document = new FakeDocument();
+  const sandbox = {
+    console: quietConsole,
+    document,
+    localStorage: storage,
+    performance: { now: () => Date.now() },
+    setTimeout,
+    clearTimeout,
+    setInterval: () => 1,
+    clearInterval: () => {},
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {}
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  const context = vm.createContext(sandbox);
+
+  const load = file => {
+    const full = path.join(ROOT, file);
+    vm.runInContext(fs.readFileSync(full, 'utf8'), context, { filename: full });
+  };
+
+  load('js/game-logic.js');
+  load('js/economy.js');
+  load('js/progression.js');
+  if (opts.withMain) load('js/main.js');
+
+  if (!opts.skipInit) sandbox.Progression.init();
+
+  return { sandbox, context, document, storage };
+}
+
+// ------------------------------------------------------------
+// Test bookkeeping
+// ------------------------------------------------------------
+
+let passed = 0;
+let failed = 0;
+const failures = [];
+
+function check(name, condition, details) {
+  if (condition) {
+    passed += 1;
+    console.log('PASS  ' + name);
+  } else {
+    failed += 1;
+    failures.push(name + (details ? ' — ' + details : ''));
+    console.log('FAIL  ' + name + (details ? ' — ' + details : ''));
+  }
+}
+
+function eq(name, actual, expected) {
+  check(name, actual === expected, 'expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
+}
+
+function approx(name, actual, expected) {
+  check(name, Math.abs(actual - expected) < 1e-9, 'expected ' + expected + ', got ' + actual);
+}
+
+function outcomeFor(symbols) {
+  // 3x3 grid with the given payline in the middle row
+  return [
+    ['wild', symbols[0], 'wild'],
+    ['wild', symbols[1], 'wild'],
+    ['wild', symbols[2], 'wild']
+  ];
+}
+
+function spinResult(win, payout, winType) {
+  return {
+    isWin: win,
+    payout: payout,
+    winType: winType || (win ? 'regular' : 'none'),
+    winningSymbols: win ? ['cherry', 'cherry', 'cherry'] : []
+  };
+}
+
+function localDateKey(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + (offsetDays || 0));
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return d.getFullYear() + '-' + m + '-' + day;
+}
+
+// ------------------------------------------------------------
+// Machine tests
+// ------------------------------------------------------------
+
+function testMachines() {
+  console.log('\n=== Machines ===');
+
+  const world = createWorld(createStorage());
+  const { sandbox } = world;
+  const { Progression, SlotMachine, MACHINE_DEFS, PayoutCalculator } = sandbox;
+
+  eq('Classic is the default machine', Progression.state.machineSelected, 'classic');
+  eq('Classic is unlocked for a new player', Progression.state.machineUnlocked.join(','), 'classic');
+  eq('Classic is active in game logic', sandbox.getActiveMachineId(), 'classic');
+  check('Classic symbols are the original 7', Object.keys(MACHINE_DEFS.classic.symbols).length === 7);
+
+  // Locked selection at level 1
+  eq('Locked Treasure cannot be selected at level 1', Progression.selectMachine('treasure'), false);
+  eq('Locked Cyber cannot be selected at level 1', Progression.selectMachine('cyber'), false);
+  eq('Selection stays Classic while locked', Progression.state.machineSelected, 'classic');
+
+  // Treasure at level 5
+  Progression.state.level = 5;
+  Progression._recalculateMachines();
+  check('Treasure unlocks at level 5', Progression.state.machineUnlocked.indexOf('treasure') !== -1);
+  eq('Cyber stays locked at level 5', Progression.state.machineUnlocked.indexOf('cyber'), -1);
+  eq('Treasure can be selected at level 5', Progression.selectMachine('treasure'), true);
+  eq('Selected machine is Treasure', Progression.state.machineSelected, 'treasure');
+  eq('Game logic switched to Treasure', sandbox.getActiveMachineId(), 'treasure');
+
+  // Cyber at level 10
+  Progression.state.level = 10;
+  Progression._recalculateMachines();
+  check('Cyber unlocks at level 10', Progression.state.machineUnlocked.indexOf('cyber') !== -1);
+  eq('Cyber can be selected at level 10', Progression.selectMachine('cyber'), true);
+  eq('Selected machine is Cyber', Progression.state.machineSelected, 'cyber');
+  eq('Game logic switched to Cyber', sandbox.getActiveMachineId(), 'cyber');
+
+  // Distinct symbol sets
+  const sets = ['classic', 'treasure', 'cyber'].map(id =>
+    Object.values(MACHINE_DEFS[id].symbols).map(s => s.id).sort().join(','));
+  check('Each machine has a distinct symbol set', new Set(sets).size === 3);
+
+  // Equal total weight (no machine-specific advantage)
+  const totals = ['classic', 'treasure', 'cyber'].map(id =>
+    Object.values(MACHINE_DEFS[id].symbols).reduce((sum, s) => sum + s.weight, 0));
+  check('All machines share the same total symbol weight', totals.every(t => t === totals[0]));
+
+  // Payouts for every machine's own symbols
+  ['classic', 'treasure', 'cyber'].forEach(id => {
+    sandbox.setActiveMachineId(id);
+    let ok = true;
+    let detail = '';
+    Object.values(MACHINE_DEFS[id].symbols).forEach(symbol => {
+      if (symbol.id === 'wild') return;
+      const result = PayoutCalculator.evaluate(outcomeFor([symbol.id, symbol.id, symbol.id]), 10);
+      if (!result.isWin || result.multiplier !== symbol.multiplier || result.payout !== 10 * symbol.multiplier) {
+        ok = false;
+        detail = id + '/' + symbol.id + ' expected ' + symbol.multiplier + 'x, got ' + result.multiplier;
+      }
+    });
+    check('Payouts work for ' + id + ' symbols', ok, detail);
+
+    const jackpot = PayoutCalculator.evaluate(outcomeFor(['wild', 'wild', 'wild']), 10);
+    check(id + ' wild jackpot pays 500x', jackpot.winType === 'jackpot' && jackpot.payout === 5000);
+
+    // Wild substitution on this machine
+    const symbol = Object.values(MACHINE_DEFS[id].symbols).find(s => s.id !== 'wild');
+    const sub = PayoutCalculator.evaluate(outcomeFor(['wild', symbol.id, symbol.id]), 10);
+    check(id + ' wild substitution works', sub.isWin && sub.multiplier === symbol.multiplier);
+  });
+
+  // Symbol renderers exist for every symbol
+  let rendered = 0;
+  ['classic', 'treasure', 'cyber'].forEach(id => {
+    Object.values(MACHINE_DEFS[id].symbols).forEach(symbol => {
+      if (sandbox.SymbolRenderer.render(symbol.id).length > 0) rendered += 1;
+    });
+  });
+  const totalSymbols = ['classic', 'treasure', 'cyber']
+    .reduce((n, id) => n + Object.keys(MACHINE_DEFS[id].symbols).length, 0);
+  eq('Every machine symbol has an SVG renderer', rendered, totalSymbols);
+}
+
+function testMachinePersistence() {
+  console.log('\n=== Machine persistence ===');
+
+  const storage = createStorage();
+  let world = createWorld(storage);
+  world.sandbox.Progression.state.level = 5;
+  world.sandbox.Progression._recalculateMachines();
+  world.sandbox.Progression.selectMachine('treasure');
+  world.sandbox.Progression.save();
+
+  // Reload with the same storage
+  world = createWorld(storage);
+  eq('Selected machine survives reload', world.sandbox.Progression.state.machineSelected, 'treasure');
+  check('Unlocked machine survives reload', world.sandbox.Progression.state.machineUnlocked.indexOf('treasure') !== -1);
+  eq('Active machine restored in game logic', world.sandbox.getActiveMachineId(), 'treasure');
+
+  // Level-based recalculation wins over stale saved unlock state
+  const stale = createStorage();
+  stale.setItem('slop-machine-progress', JSON.stringify({
+    xp: 0, totalXp: 0, level: 1, spins: 0, wins: 0, jackpots: 0,
+    achievements: {}, collected: [], cosmeticRewards: [], levelRewards: [],
+    machineSelected: 'cyber',
+    machineUnlocked: ['classic', 'treasure', 'cyber'],
+    dailyMissions: { date: localDateKey(0), spins: 0, coinsWon: 0, symbolsCollected: [], completed: [], claimed: [] }
+  }));
+  const staleWorld = createWorld(stale);
+  eq('Stale selected machine falls back to Classic at level 1', staleWorld.sandbox.Progression.state.machineSelected, 'classic');
+  eq('Stale unlocked list is recalculated from level', staleWorld.sandbox.Progression.state.machineUnlocked.join(','), 'classic');
+}
+
+// ------------------------------------------------------------
+// Daily mission tests
+// ------------------------------------------------------------
+
+function completeSpins(world, count, startToken) {
+  for (let i = 0; i < count; i++) {
+    world.sandbox.Progression.onSpinComplete(
+      spinResult(false, 0, 'none'),
+      outcomeFor(['cherry', 'lemon', 'watermelon']),
+      (startToken || 0) + i + 1
+    );
+  }
+}
+
+function testMissions() {
+  console.log('\n=== Daily missions ===');
+
+  const world = createWorld(createStorage());
+  const { Progression, Economy } = world.sandbox;
+
+  eq('Fresh spin progress is 0', Progression.state.dailyMissions.spins, 0);
+  eq('Fresh coin progress is 0', Progression.state.dailyMissions.coinsWon, 0);
+  eq('Fresh mission date is today', Progression.state.dailyMissions.date, localDateKey(0));
+
+  // Spin progress increments only after a completed spin
+  Progression.onSpinComplete(spinResult(false, 0, 'none'), outcomeFor(['cherry', 'lemon', 'watermelon']), 1);
+  eq('Spin progress increments after a completed spin', Progression.state.dailyMissions.spins, 1);
+
+  // Duplicate token is ignored (no duplicate progress)
+  Progression.onSpinComplete(spinResult(false, 0, 'none'), outcomeFor(['cherry', 'lemon', 'watermelon']), 1);
+  eq('Duplicate spin token does not double mission progress', Progression.state.dailyMissions.spins, 1);
+
+  // Coin progress tracks actual winnings, not the bet
+  Progression.onSpinComplete(spinResult(true, 120, 'regular'), outcomeFor(['cherry', 'cherry', 'cherry']), 2);
+  eq('Coin progress adds actual winnings', Progression.state.dailyMissions.coinsWon, 120);
+  Progression.onSpinComplete(spinResult(true, 380, 'regular'), outcomeFor(['cherry', 'cherry', 'cherry']), 3);
+  eq('Coin progress accumulates winnings', Progression.state.dailyMissions.coinsWon, 500);
+  eq('Coin mission is completed at 500', Progression.state.dailyMissions.completed[1], true);
+
+  // Symbol collection progress
+  const collectedBefore = Progression.state.dailyMissions.symbolsCollected.length;
+  Progression.onSpinComplete(
+    spinResult(false, 0, 'none'),
+    outcomeFor(['coin', 'coin', 'coin']),
+    4
+  );
+  check('New symbol is recorded for the mission', Progression.state.dailyMissions.symbolsCollected.indexOf('coin') !== -1);
+  check('Symbol mission progresses on a new symbol', Progression.state.dailyMissions.symbolsCollected.length > collectedBefore);
+  eq('Symbol mission completes with one new symbol', Progression.state.dailyMissions.completed[2], true);
+
+  // Complete the spins mission (we are at 4 completed spins)
+  completeSpins(world, 6, 4);
+  eq('Spin mission completes at 10 spins', Progression.state.dailyMissions.completed[0], true);
+  eq('Total spin progress is 10', Progression.state.dailyMissions.spins, 10);
+
+  // Claim coin reward exactly once
+  const balanceBefore = Economy.getBalance();
+  eq('Claiming completed spin mission succeeds', Progression.claimMission('spins_10'), true);
+  eq('Coin reward updates balance', Economy.getBalance(), balanceBefore + 100);
+  eq('Claiming the same mission again fails', Progression.claimMission('spins_10'), false);
+  eq('Balance is unchanged after a duplicate claim', Economy.getBalance(), balanceBefore + 100);
+  eq('Claimed flag is persisted', Progression.state.dailyMissions.claimed[0], true);
+
+  // Claim XP reward exactly once
+  const xpBefore = Progression.getXP();
+  eq('Claiming completed coin mission succeeds', Progression.claimMission('coins_500'), true);
+  eq('XP reward uses progression system', Progression.getXP(), xpBefore + 50);
+  eq('Claiming the same XP mission again fails', Progression.claimMission('coins_500'), false);
+  eq('XP is unchanged after a duplicate claim', Progression.getXP(), xpBefore + 50);
+
+  // Claim symbol XP mission
+  const xpBefore2 = Progression.getXP();
+  eq('Claiming completed symbol mission succeeds', Progression.claimMission('symbols_1'), true);
+  eq('Symbol mission grants 200 XP', Progression.getXP(), xpBefore2 + 200);
+
+  // Claim before completion
+  const fresh = createWorld(createStorage());
+  eq('Incomplete mission cannot be claimed', fresh.sandbox.Progression.claimMission('spins_10'), false);
+  eq('Incomplete mission claim grants no coins', fresh.sandbox.Economy.getBalance(), 1000);
+}
+
+function testMissionPersistenceAndReset() {
+  console.log('\n=== Mission persistence & daily reset ===');
+
+  const storage = createStorage();
+  let world = createWorld(storage);
+  const { Progression } = world.sandbox;
+
+  completeSpins(world, 10, 0);
+  Progression.onSpinComplete(spinResult(true, 500, 'regular'), outcomeFor(['cherry', 'cherry', 'cherry']), 11);
+  Progression.claimMission('spins_10');
+  Progression.save();
+
+  // Reload: progress + claim state survive
+  world = createWorld(storage);
+  eq('Mission progress survives reload', world.sandbox.Progression.state.dailyMissions.spins, 11);
+  eq('Coin progress survives reload', world.sandbox.Progression.state.dailyMissions.coinsWon, 500);
+  eq('Claimed state survives reload', world.sandbox.Progression.state.dailyMissions.claimed[0], true);
+
+  // Repeated reload does not grant the reward again
+  const balanceAfterReload = world.sandbox.Economy.getBalance();
+  eq('Claim after reload is rejected', world.sandbox.Progression.claimMission('spins_10'), false);
+  eq('No duplicate reward after reload', world.sandbox.Economy.getBalance(), balanceAfterReload);
+
+  // Same-day ensureDailyReset does nothing
+  const dateBefore = world.sandbox.Progression.state.dailyMissions.date;
+  world.sandbox.Progression._ensureDailyReset();
+  eq('Same-day reset is a no-op', world.sandbox.Progression.state.dailyMissions.date, dateBefore);
+  eq('Same-day reset keeps progress', world.sandbox.Progression.state.dailyMissions.spins, 11);
+
+  // Simulate yesterday, then reload: reset must occur
+  world.sandbox.Progression.state.dailyMissions.date = localDateKey(-1);
+  world.sandbox.Progression.save();
+  const resetWorld = createWorld(storage);
+  const dm = resetWorld.sandbox.Progression.state.dailyMissions;
+  eq('Missions reset on a new local date', dm.date, localDateKey(0));
+  eq('Spin progress resets', dm.spins, 0);
+  eq('Coin progress resets', dm.coinsWon, 0);
+  eq('Symbol progress resets', dm.symbolsCollected.length, 0);
+  check('Completion resets', dm.completed.every(v => v === false));
+  check('Claimed state resets for the new day', dm.claimed.every(v => v === false));
+
+  // Corrupt / missing data is handled safely
+  const corrupt = createStorage();
+  corrupt.setItem('slop-machine-progress', '{not valid json');
+  const corruptWorld = createWorld(corrupt);
+  eq('Corrupt save starts from a fresh level', corruptWorld.sandbox.Progression.getLevel(), 1);
+  eq('Corrupt save starts with Classic', corruptWorld.sandbox.Progression.state.machineSelected, 'classic');
+
+  const partial = createStorage();
+  partial.setItem('slop-machine-progress', JSON.stringify({
+    level: 5,
+    dailyMissions: { spins: 'nope', coinsWon: -5, symbolsCollected: 'bad', completed: 'bad', claimed: null }
+  }));
+  const partialWorld = createWorld(partial);
+  const pdm = partialWorld.sandbox.Progression.state.dailyMissions;
+  eq('Partial mission data normalizes spins', pdm.spins, 0);
+  eq('Partial mission data normalizes coins', pdm.coinsWon, 0);
+  eq('Partial mission data normalizes symbols', pdm.symbolsCollected.length, 0);
+  eq('Partial mission data normalizes completed', pdm.completed.length, 3);
+  eq('Partial mission data normalizes claimed', pdm.claimed.length, 3);
+  eq('Level 5 saved state still unlocks Treasure', partialWorld.sandbox.Progression.state.machineUnlocked.indexOf('treasure') !== -1, true);
+}
+
+function testMissionsAcrossMachines() {
+  console.log('\n=== Missions across machines ===');
+
+  const world = createWorld(createStorage());
+  const { Progression } = world.sandbox;
+  Progression.state.level = 10;
+  Progression._recalculateMachines();
+  Progression.selectMachine('cyber');
+
+  Progression.onSpinComplete(spinResult(true, 250, 'regular'), outcomeFor(['chip', 'chip', 'chip']), 1);
+  eq('Spin mission counts Cyber spins', Progression.state.dailyMissions.spins, 1);
+  eq('Coin mission counts Cyber winnings', Progression.state.dailyMissions.coinsWon, 250);
+  check('Symbol mission collects a Cyber symbol', Progression.state.dailyMissions.symbolsCollected.indexOf('chip') !== -1);
+  eq('Collection includes Cyber symbols', Progression.state.collected.indexOf('chip') !== -1, true);
+}
+
+function testUIWiring() {
+  console.log('\n=== UI wiring (cards & claim buttons) ===');
+
+  // Build the real DOM structure BEFORE Progression.init() so the UI binding
+  // and rendering code paths are exercised.
+  const storage = createStorage();
+  const world = createWorld(storage, { skipInit: true, withMain: true });
+  const { sandbox, document } = world;
+  const { Progression, Economy } = sandbox;
+
+  const missionIds = ['spins_10', 'coins_500', 'symbols_1'];
+  const missionsList = document.createElement('div');
+  missionsList.id = 'missions-list';
+  document.body.appendChild(missionsList);
+  missionIds.forEach(id => {
+    const card = document.createElement('div');
+    card.className = 'mission-card';
+    card.dataset.mission = id;
+    const info = document.createElement('div'); info.className = 'mission-card-info';
+    const name = document.createElement('div'); name.className = 'mission-card-name';
+    const desc = document.createElement('div'); desc.className = 'mission-card-desc';
+    const reward = document.createElement('div'); reward.className = 'mission-card-reward';
+    info.children.push(name, desc, reward);
+    const progress = document.createElement('div'); progress.className = 'mission-card-progress';
+    const barWrap = document.createElement('div'); barWrap.className = 'mission-bar-wrap';
+    const fill = document.createElement('div'); fill.className = 'mission-bar-fill';
+    barWrap.children.push(fill);
+    const fraction = document.createElement('span'); fraction.className = 'mission-fraction';
+    progress.children.push(barWrap, fraction);
+    const btn = document.createElement('div'); btn.className = 'mission-claim-btn disabled';
+    card.children.push(info, progress, btn);
+    missionsList.children.push(card);
+    card._parent = missionsList;
+  });
+
+  const machinesGrid = document.createElement('div');
+  machinesGrid.className = 'machines-grid';
+  document.body.appendChild(machinesGrid);
+  ['classic', 'treasure', 'cyber'].forEach(id => {
+    const card = document.createElement('div');
+    card.className = 'machine-card';
+    card.dataset.machine = id;
+    const overlay = document.createElement('div'); overlay.className = 'lock-overlay';
+    const status = document.createElement('div'); status.className = 'machine-status';
+    card.children.push(overlay, status);
+    machinesGrid.children.push(card);
+    card._parent = machinesGrid;
+  });
+
+  // Fire DOMContentLoaded so main.js wires machine-card clicks and
+  // Progression.init() binds the claim buttons.
+  document.dispatch('DOMContentLoaded', {});
+
+  // Claim buttons start disabled and show PROGRESS
+  const cards = document.querySelectorAll('.mission-card');
+  eq('All three mission cards are rendered', cards.length, 3);
+  cards.forEach(card => {
+    const btn = card.querySelector('.mission-claim-btn');
+    check('Claim button initially disabled (' + card.dataset.mission + ')', btn.classList.contains('disabled'));
+    eq('Claim button initially shows PROGRESS (' + card.dataset.mission + ')', btn.textContent, 'PROGRESS');
+  });
+
+  // Locked machine cards show their unlock requirement and overlay
+  const machineCards = document.querySelectorAll('.machine-card');
+  eq('All three machine cards are rendered', machineCards.length, 3);
+  const treasure = machineCards.find(c => c.dataset.machine === 'treasure');
+  const classic = machineCards.find(c => c.dataset.machine === 'classic');
+  eq('Classic machine card is selected', classic.querySelector('.machine-status').textContent, 'SELECTED');
+  eq('Locked Treasure shows unlock requirement', treasure.querySelector('.machine-status').textContent, 'UNLOCK AT LEVEL 5');
+  check('Locked Treasure overlay is visible', treasure.querySelector('.lock-overlay').style.display === 'flex');
+  check('Treasure card has locked class', treasure.classList.contains('locked'));
+
+  // Complete and claim the spin mission via the UI button (exactly once)
+  completeSpins(world, 10, 0);
+  const spinBtn = cards[0].querySelector('.mission-claim-btn');
+  check('Claim button becomes claimable when complete', spinBtn.classList.contains('claimable'));
+  eq('Claim button shows CLAIM when complete', spinBtn.textContent, 'CLAIM');
+  const balanceBefore = Economy.getBalance();
+  spinBtn.click();
+  eq('Clicking claim button awards coins once', Economy.getBalance(), balanceBefore + 100);
+  eq('Claim button switches to CLAIMED', spinBtn.textContent, 'CLAIMED');
+  spinBtn.click();
+  eq('Clicking claim button again awards nothing', Economy.getBalance(), balanceBefore + 100);
+
+  // Machine cards are locked: clicking a locked card must not change selection
+  treasure.click();
+  eq('Clicking a locked machine card does not select it', Progression.state.machineSelected, 'classic');
+
+  // After reaching level 5 the machine becomes selectable via its card
+  Progression.state.level = 5;
+  Progression._recalculateMachines();
+  Progression.updateMachineUI();
+  eq('Unlocked Treasure status changes to UNLOCKED', treasure.querySelector('.machine-status').textContent, 'UNLOCKED');
+  eq('Unlocked Treasure overlay is hidden', treasure.querySelector('.lock-overlay').style.display, 'none');
+  treasure.click();
+  eq('Clicking unlocked machine card selects it', Progression.state.machineSelected, 'treasure');
+  eq('Selected machine status shows SELECTED', treasure.querySelector('.machine-status').textContent, 'SELECTED');
+
+  // Claim buttons are bound only once (no duplicate reward handlers)
+  check('Mission UI bound exactly once', Progression._missionUIbound === true);
+  const balanceBeforeRebind = Economy.getBalance();
+  Progression._bindMissionUI();
+  // Re-binding is a no-op; the claimed button cannot claim again either way
+  spinBtn.click();
+  eq('Re-binding handlers does not duplicate rewards', Economy.getBalance(), balanceBeforeRebind);
+}
+
+// ------------------------------------------------------------
+// Regression tests (Stage 3 / Stage 4 / reels)
+// ------------------------------------------------------------
+
+function testEconomyRegression() {
+  console.log('\n=== Economy regression ===');
+
+  const world = createWorld(createStorage());
+  const { Economy } = world.sandbox;
+
+  eq('Starting balance is 1000', Economy.getBalance(), 1000);
+  eq('Bet deduction succeeds', Economy.beginSpin(10), true);
+  eq('Balance after bet is 990', Economy.getBalance(), 990);
+  eq('Second deduction in the same spin is rejected', Economy.beginSpin(10), false);
+  eq('Payout credits the balance', Economy.completeSpin({ isWin: true, payout: 50, winType: 'regular' }), true);
+  eq('Balance after win is 1040', Economy.getBalance(), 1040);
+  eq('Stats count one spin', Economy.stats.spins, 1);
+  eq('Stats count one win', Economy.stats.wins, 1);
+  eq('Best win tracked', Economy.stats.bestWin, 50);
+
+  Economy.beginSpin(20);
+  eq('Refund returns the pending bet', Economy.refundSpin(), true);
+  eq('Balance restored after refund', Economy.getBalance(), 1040);
+  eq('Second refund is rejected', Economy.refundSpin(), false);
+}
+
+function testProgressionRegression() {
+  console.log('\n=== Progression regression ===');
+
+  const world = createWorld(createStorage());
+  const { Progression } = world.sandbox;
+
+  Progression.addXP(200);
+  eq('Level 2 reached at 200 XP', Progression.getLevel(), 2);
+  Progression.addXP(400);
+  eq('Level 3 reached at 600 XP', Progression.getLevel(), 3);
+  eq('Level-up reward paid for level 2', Progression.state.levelRewards.indexOf(2) !== -1, true);
+
+  const before = Progression.getXP();
+  Progression.onSpinComplete(spinResult(true, 20, 'regular'), outcomeFor(['cherry', 'cherry', 'cherry']), 100);
+  eq('Spin awards base + win XP', Progression.getXP() - before, 20);
+  eq('Spin counter increments', Progression.state.spins, 1);
+  eq('Win counter increments', Progression.state.wins, 1);
+  eq('First Spin achievement unlocks', Progression.state.achievements.first_spin.unlocked, true);
+  eq('First Win achievement unlocks', Progression.state.achievements.first_win.unlocked, true);
+  eq('Collection discovers a symbol', Progression.state.collected.indexOf('cherry') !== -1, true);
+
+  const xpAfter = Progression.getXP();
+  Progression.onSpinComplete(spinResult(true, 20, 'regular'), outcomeFor(['cherry', 'cherry', 'cherry']), 100);
+  eq('Duplicate spin token awards no XP', Progression.getXP(), xpAfter);
+}
+
+function testPayoutRegression() {
+  console.log('\n=== Payout regression ===');
+
+  const world = createWorld(createStorage());
+  world.sandbox.setActiveMachineId('classic');
+  const ok = world.sandbox.TestRunner.runPayoutTests();
+  check('Classic payout test suite passes (16/16)', ok === true);
+
+  // Reel strip preparation still targets the centered payline offset
+  const reel = new FakeElement('div');
+  const info = world.sandbox.ReelAnimator.prepareReel(
+    reel,
+    [['cherry', 'lemon', 'watermelon'], ['lemon', 'cherry', 'star'], ['star', 'seven', 'diamond']],
+    0
+  );
+  eq('Reel strip has 13 symbols', info.totalSymbols, 13);
+  eq('Reel target offset centers the payline', info.targetOffset, -556);
+  eq('Reel strip length is correct', info.stripLength, 13 * 94);
+
+  // stopReel is idempotent
+  const animator = world.sandbox.ReelAnimator;
+  animator.activeReels[0] = { phase: animator.PHASE.SPINNING, stopTriggered: false };
+  animator.stopReel(0);
+  const firstPhase = animator.activeReels[0].phase;
+  animator.stopReel(0);
+  eq('stopReel transitions to decelerating', firstPhase, animator.PHASE.DECELERATING);
+  eq('stopReel is idempotent', animator.activeReels[0].phase, animator.PHASE.DECELERATING);
+}
+
+function testAutoSpinRegression() {
+  console.log('\n=== Auto-spin regression ===');
+
+  const world = createWorld(createStorage(), { withMain: true, skipInit: true });
+  const { sandbox } = world;
+  // main.js needs a Progression state for machine/mission wiring
+  sandbox.Progression.init();
+
+  const stopBtn = world.document.getElementById('stop-btn');
+  sandbox.startAutoSpin();
+  eq('Auto-spin shows the STOP button', stopBtn.style.display, 'inline-flex');
+  sandbox.stopAutoSpin('');
+  eq('Auto-spin hides the STOP button when stopped', stopBtn.style.display, 'none');
+}
+
+// ------------------------------------------------------------
+// Run
+// ------------------------------------------------------------
+
+try {
+  testMachines();
+  testMachinePersistence();
+  testMissions();
+  testMissionPersistenceAndReset();
+  testMissionsAcrossMachines();
+  testUIWiring();
+  testEconomyRegression();
+  testProgressionRegression();
+  testPayoutRegression();
+  testAutoSpinRegression();
+} catch (error) {
+  console.error('\nUNEXPECTED TEST ERROR:', error);
+  failed += 1;
+  failures.push('Unexpected error: ' + error.message);
+}
+
+console.log('\n========================================');
+console.log('Tests: ' + (passed + failed) + '  Passed: ' + passed + '  Failed: ' + failed);
+if (failures.length > 0) {
+  console.log('\nFailures:');
+  failures.forEach(f => console.log(' - ' + f));
+}
+console.log('========================================');
+
+process.exit(failed === 0 ? 0 : 1);
