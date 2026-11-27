@@ -964,6 +964,10 @@ const SlotMachine = {
    */
   stopAllReels() {
     ReelAnimator.stopAll();
+    // Ensure no background reel sound survives an interrupted spin
+    if (typeof window !== 'undefined' && window.AudioSystem) {
+      window.AudioSystem.stopAll();
+    }
     // Note: if a spin is in progress, let it finish gracefully
     // The isSpinning flag will be cleared when the animation completes
     if (window.Economy && window.Economy.hasPendingSpin()) {

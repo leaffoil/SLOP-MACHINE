@@ -39,7 +39,11 @@
       </div>
     </div>
     <div class="header-right">
-      <button class="icon-btn" id="mute-btn" title="Toggle Sound" aria-label="Toggle sound">
+      <div class="volume-control" title="Master volume">
+        <input type="range" id="volume-slider" class="volume-slider" min="0" max="100" value="45" aria-label="Master volume">
+        <span class="volume-value" id="volume-value">45%</span>
+      </div>
+      <button class="icon-btn" id="mute-btn" title="Mute sound" aria-label="Mute sound">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M11 5L6 9H2v6h4l5 4V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
           <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -458,6 +462,7 @@
 
   <script src="js/game-logic.js"></script>
   <script src="js/economy.js"></script>
+  <script src="js/audio.js"></script>
   <script src="js/main.js"></script>
   <script src="js/progression.js"></script>
 </body>

@@ -188,6 +188,44 @@ function createStorage() {
   };
 }
 
+/** Recording stub for Web Audio — no speakers, all calls observable. */
+class FakeAudioParam {
+  constructor(value) { this.value = value; this.calls = []; }
+  setValueAtTime(v, t) { this.value = v; this.calls.push(['set', v, t]); }
+  exponentialRampToValueAtTime(v, t) { this.value = v; this.calls.push(['ramp', v, t]); }
+  setTargetAtTime(v, t) { this.value = v; this.calls.push(['target', v, t]); }
+}
+class FakeAudioNode {
+  constructor(kind, ctx) {
+    this.kind = kind; this.ctx = ctx; this.connected = []; this.disconnected = false;
+    this.type = ''; this.frequency = new FakeAudioParam(440);
+    this.Q = new FakeAudioParam(1); this.gain = new FakeAudioParam(1);
+    this.loop = false; this.buffer = null; this.onended = null;
+    this.started = false; this.stopped = false;
+  }
+  connect(dest) { this.connected.push(dest); return dest; }
+  disconnect() { this.disconnected = true; }
+  start() { this.started = true; this.ctx.calls.push([this.kind + ':start']); }
+  stop() { this.stopped = true; this.ctx.calls.push([this.kind + ':stop']); }
+}
+class FakeAudioContext {
+  constructor() {
+    this.state = 'running'; this.currentTime = 1; this.sampleRate = 44100;
+    this.destination = new FakeAudioNode('destination', this);
+    this.nodes = []; this.calls = []; this.resumeCount = 0;
+    FakeAudioContext.instances.push(this);
+  }
+  createGain() { const n = new FakeAudioNode('gain', this); this.nodes.push(n); return n; }
+  createOscillator() { const n = new FakeAudioNode('oscillator', this); this.nodes.push(n); return n; }
+  createBufferSource() { const n = new FakeAudioNode('buffer', this); this.nodes.push(n); return n; }
+  createBiquadFilter() { const n = new FakeAudioNode('filter', this); this.nodes.push(n); return n; }
+  createBuffer(channels, length, rate) {
+    return { length, sampleRate: rate, getChannelData: () => new Float32Array(length) };
+  }
+  resume() { this.resumeCount += 1; return Promise.resolve(); }
+}
+FakeAudioContext.instances = [];
+
 function createWorld(storage, options) {
   const opts = options || {};
   const document = new FakeDocument();
@@ -195,6 +233,8 @@ function createWorld(storage, options) {
     console: quietConsole,
     document,
     localStorage: storage,
+    AudioContext: FakeAudioContext,
+    Date, Math, Number, Boolean, String, Array, Object, JSON,
     performance: { now: () => Date.now() },
     setTimeout,
     clearTimeout,
@@ -214,6 +254,7 @@ function createWorld(storage, options) {
 
   load('js/game-logic.js');
   load('js/economy.js');
+  load('js/audio.js');
   load('js/progression.js');
   if (opts.withMain) load('js/main.js');
 
@@ -1152,6 +1193,220 @@ function testWinFeedback() {
 }
 
 // ------------------------------------------------------------
+// Audio system tests (recording stub — no speakers required)
+// ------------------------------------------------------------
+
+function countOsc(world) {
+  const ctx = world.sandbox.AudioSystem.context;
+  return ctx ? ctx.nodes.filter(n => n.kind === 'oscillator').length : 0;
+}
+
+function testAudioCore() {
+  console.log('\n=== Audio core & preferences ===');
+
+  FakeAudioContext.instances = [];
+  const world = createWorld(createStorage());
+  const { sandbox } = world;
+  const A = sandbox.AudioSystem;
+
+  check('Audio system is exposed on window', Boolean(A));
+  eq('No AudioContext before user interaction', FakeAudioContext.instances.length, 0);
+  eq('Audio starts unmuted with sensible default volume', A.isMuted(), false);
+  eq('Default volume is 0.45', A.getVolume(), 0.45);
+
+  // First interaction creates exactly one context
+  eq('unlock() succeeds', A.unlock(), true);
+  eq('Exactly one AudioContext is created', FakeAudioContext.instances.length, 1);
+  const ctx = A.context;
+  A.unlock(); A.unlock();
+  check('AudioContext is reused', A.context === ctx);
+  eq('Context count stays at one', FakeAudioContext.instances.length, 1);
+  eq('Master gain routes to destination', A.master.connected.indexOf(ctx.destination) !== -1, true);
+
+  // Volume changes apply to the master node
+  A.setVolume(0.8);
+  eq('Volume is stored', A.getVolume(), 0.8);
+  check('Master gain follows volume', A.master.gain.value > 0.7 && A.master.gain.value <= 0.8,
+    'gain=' + A.master.gain.value);
+  A.setVolume(5);
+  eq('Volume is clamped to max', A.getVolume(), 1);
+  A.setVolume(-2);
+  eq('Volume is clamped to min', A.getVolume(), 0);
+  A.setVolume(0.45);
+
+  // Mute silences and stops continuous sound
+  A.startReel();
+  check('Reel loop starts', Boolean(A._reelSource));
+  A.setMuted(true);
+  eq('Mute sets state', A.isMuted(), true);
+  eq('Mute stops reel loop', A._reelSource, null);
+  const before = countOsc(world);
+  A.win(); A.jackpot(); A.buttonClick(); A.reelStop(1);
+  eq('Muted sounds create no oscillators', countOsc(world), before);
+
+  A.setMuted(false);
+  eq('Unmute restores state', A.isMuted(), false);
+  A.win();
+  check('Unmuted sound is created', countOsc(world) > before);
+
+  // applyPreferences
+  A.applyPreferences({ muted: true, volume: 0.2 });
+  eq('applyPreferences sets mute', A.isMuted(), true);
+  eq('applyPreferences sets volume', A.getVolume(), 0.2);
+}
+
+function testAudioGameEvents() {
+  console.log('\n=== Audio game events ===');
+
+  const world = createWorld(createStorage(), { withMain: true });
+  const { sandbox, document } = world;
+  document.dispatch('DOMContentLoaded', {});
+  const A = sandbox.AudioSystem;
+  A.unlock();
+  const ctx = A.context;
+
+  // Track semantic events by wrapping methods (system itself still exercised)
+  const events = [];
+  ['spinStart', 'reelStop', 'win', 'jackpot', 'loss', 'machineSwitch',
+    'missionComplete', 'rewardClaim', 'stopAll'].forEach(name => {
+    const original = A[name].bind(A);
+    A[name] = function () { events.push(name); return original.apply(null, arguments); };
+  });
+
+  // Spin lifecycle: startup once, three reel stops, one result sound
+  const payout = { isWin: true, winType: 'regular', payout: 20 };
+  sandbox.SlotMachine.onSpinStart(null, payout);
+  check('Spin start plays startup', events.indexOf('spinStart') !== -1);
+  check('Spin start begins reel loop', Boolean(A._reelSource));
+  [0, 1, 2].forEach(i => sandbox.SlotMachine.onReelStop(i, null));
+  eq('Three reel stop sounds', events.filter(e => e === 'reelStop').length, 3);
+  eq('Final reel stop ends the reel loop', A._reelSource, null);
+
+  events.length = 0;
+  sandbox.SlotMachine.onSpinComplete({ isWin: true, winType: 'regular', payout: 20 }, 1);
+  eq('Ordinary win fires win exactly once', events.filter(e => e === 'win').length, 1);
+  eq('Ordinary win never fires jackpot', events.filter(e => e === 'jackpot').length, 0);
+
+  events.length = 0;
+  sandbox.SlotMachine.onSpinComplete({ isWin: true, winType: 'jackpot', payout: 5000 }, 2);
+  eq('Jackpot fires jackpot exactly once', events.filter(e => e === 'jackpot').length, 1);
+  eq('Jackpot never fires ordinary win', events.filter(e => e === 'win').length, 0);
+
+  events.length = 0;
+  sandbox.SlotMachine.onSpinComplete({ isWin: false, winType: 'none', payout: 0 }, 3);
+  eq('Loss fires loss sound once', events.filter(e => e === 'loss').length, 1);
+  eq('Loss fires no win/jackpot sounds', events.filter(e => e === 'win' || e === 'jackpot').length, 0);
+
+  // Mission completion + reward claim hooks from Progression
+  events.length = 0;
+  sandbox.Progression.state.level = 5;
+  sandbox.Progression._recalculateMachines();
+  eq('Machine switch triggers transition sound', sandbox.Progression.selectMachine('treasure'), true);
+  check('machineSwitch event fired', events.indexOf('machineSwitch') !== -1);
+
+  events.length = 0;
+  for (let i = 0; i < 10; i++) {
+    sandbox.Progression.onSpinComplete(
+      { isWin: false, payout: 0, winType: 'none' },
+      [['cherry', 'cherry', 'cherry'], ['lemon', 'lemon', 'lemon'], ['star', 'star', 'star']],
+      100 + i
+    );
+  }
+  check('Newly completed mission plays achievement sound', events.indexOf('missionComplete') !== -1);
+  eq('Spins mission completed', sandbox.Progression.state.dailyMissions.completed[0], true);
+
+  events.length = 0;
+  eq('Claim succeeds', sandbox.Progression.claimMission('spins_10'), true);
+  check('Reward claim plays confirmation', events.indexOf('rewardClaim') !== -1);
+  events.length = 0;
+  eq('Duplicate claim rejected', sandbox.Progression.claimMission('spins_10'), false);
+  eq('Duplicate claim plays no reward sound', events.filter(e => e === 'rewardClaim').length, 0);
+
+  // STOP interrupts audio
+  events.length = 0;
+  sandbox.SlotMachine.stopAllReels();
+  check('STOP calls audio stopAll', events.indexOf('stopAll') !== -1);
+  eq('STOP clears reel loop', A._reelSource, null);
+}
+
+function testAudioPersistence() {
+  console.log('\n=== Audio preference persistence ===');
+
+  const storage = createStorage();
+  let world = createWorld(storage);
+  let A = world.sandbox.AudioSystem;
+  A.unlock();
+  A.setVolume(0.32);
+  A.setMuted(true);
+  world.sandbox.Progression.state.audio = { muted: true, volume: 0.32 };
+  world.sandbox.Progression.save();
+
+  world = createWorld(storage);
+  A = world.sandbox.AudioSystem;
+  eq('Mute state survives reload', A.isMuted(), true);
+  eq('Volume survives reload', A.getVolume(), 0.32);
+
+  // Corrupt data falls back safely
+  const corrupt = createStorage();
+  corrupt.setItem('slop-machine-progress', JSON.stringify({ audio: { muted: 'yes', volume: -5 } }));
+  const corruptWorld = createWorld(corrupt);
+  eq('Corrupt mute falls back to unmuted', corruptWorld.sandbox.AudioSystem.isMuted(), false);
+  eq('Corrupt volume falls back to default', corruptWorld.sandbox.AudioSystem.getVolume(), 0.45);
+}
+
+function testAudioVariationAndSafety() {
+  console.log('\n=== Audio variation & safety ===');
+
+  const world = createWorld(createStorage(), { withMain: true });
+  const A = world.sandbox.AudioSystem;
+  A.unlock();
+  const ctx = A.context;
+
+  // Pitch variation stays within configured bounds
+  const base = 760;
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < 80; i++) {
+    const v = A._variation();
+    min = Math.min(min, v); max = Math.max(max, v);
+  }
+  check('Variation stays within ±' + (A.PITCH_VARIATION * 100) + '%',
+    min >= 1 - A.PITCH_VARIATION - 1e-9 && max <= 1 + A.PITCH_VARIATION + 1e-9,
+    min.toFixed(3) + '..' + max.toFixed(3));
+  check('Variation is not zero (natural feel)', max - min > 0.01);
+
+  // Reel stop base pitches differ per reel but remain in a narrow band
+  const pitches = [];
+  for (let i = 0; i < 3; i++) {
+    const before = ctx.nodes.length;
+    A.reelStop(i);
+    const oscs = ctx.nodes.slice(before).filter(n => n.kind === 'oscillator');
+    pitches.push(oscs.length ? oscs[0].frequency.value : 0);
+  }
+  check('Each reel stop has a distinct base pitch', new Set(pitches.map(p => Math.round(p / 10))).size > 1,
+    pitches.map(p => p.toFixed(0)).join(','));
+
+  // Repeated spins never create overlapping reel loops
+  const loopsBefore = ctx.nodes.filter(n => n.kind === 'buffer' && n.loop).length;
+  for (let i = 0; i < 5; i++) {
+    A.spinStart();
+    A.reelStop(2);
+  }
+  eq('No overlapping reel loops after repeated spins', A._reelSource, null);
+  eq('Reel loop node count is bounded', ctx.nodes.filter(n => n.kind === 'buffer' && n.loop).length - loopsBefore <= 5, true);
+
+  // No duplicate audio listeners: unlock installed once
+  check('Audio unlock handler installed once', world.document._audioUnlockInstalled === true);
+
+  // Audio failures must not throw into gameplay
+  const originalUnlock = A.unlock;
+  A.unlock = () => { throw new Error('audio blocked'); };
+  let threw = false;
+  try { A.spinStart(); A.reelStop(0); A.win(); A.stopAll(); } catch (e) { threw = true; }
+  eq('Audio errors do not interrupt gameplay', threw, false);
+  A.unlock = originalUnlock;
+}
+
+// ------------------------------------------------------------
 // Run
 // ------------------------------------------------------------
 
@@ -1172,6 +1427,10 @@ try {
   testBettingLocking();
   testBetDeductionAndFunds();
   testIncrementPersistence();
+  testAudioCore();
+  testAudioGameEvents();
+  testAudioPersistence();
+  testAudioVariationAndSafety();
 } catch (error) {
   console.error('\nUNEXPECTED TEST ERROR:', error);
   failed += 1;

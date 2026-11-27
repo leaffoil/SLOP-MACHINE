@@ -127,7 +127,10 @@ const Progression = {
       dailyMissions: this._freshDailyMissions(''),
 
       // Betting: selected +/- increment (see main.js BetControls)
-      betIncrement: 10
+      betIncrement: 10,
+
+      // Audio preferences (see js/audio.js)
+      audio: { muted: false, volume: 0.45 }
     };
   },
 
@@ -169,6 +172,11 @@ const Progression = {
     // Refresh betting UI once persisted state (including betIncrement) is ready
     if (typeof window !== 'undefined' && window.BetControls) {
       window.BetControls.updateUI();
+    }
+
+    // Apply saved audio preferences to the audio system (no context is created)
+    if (typeof window !== 'undefined' && window.AudioSystem) {
+      window.AudioSystem.applyPreferences(this.state.audio);
     }
   },
 
@@ -226,6 +234,10 @@ const Progression = {
     this._applySelectedMachine();
     this.updateMachineUI();
 
+    if (typeof window !== 'undefined' && window.AudioSystem) {
+      window.AudioSystem.machineSwitch();
+    }
+
     if (typeof showToast === 'function') {
       showToast('Switched to ' + machine.name, 2000);
     }
@@ -281,7 +293,15 @@ const Progression = {
       if (dm.symbolsCollected.indexOf(id) === -1) dm.symbolsCollected.push(id);
     });
 
+    const wasCompleted = dm.completed.slice();
     this._recomputeMissionCompletion();
+
+    // Audio-only hook: fire once per newly completed mission
+    if (typeof window !== 'undefined' && window.AudioSystem) {
+      dm.completed.forEach((done, i) => {
+        if (done && !wasCompleted[i]) window.AudioSystem.missionComplete();
+      });
+    }
   },
 
   /**
@@ -312,6 +332,10 @@ const Progression = {
 
     this.save();
     this.updateMissionsUI();
+
+    if (typeof window !== 'undefined' && window.AudioSystem) {
+      window.AudioSystem.rewardClaim();
+    }
 
     if (typeof showToast === 'function') {
       const reward = def.rewardCoins > 0
@@ -892,6 +916,15 @@ const Progression = {
     // Betting increment: positive integer only; default 10 on bad/missing data
     const rawIncrement = Number(data.betIncrement);
     this.state.betIncrement = Number.isInteger(rawIncrement) && rawIncrement > 0 ? rawIncrement : 10;
+
+    // Audio preferences: validate types and clamp volume to [0, 1]
+    const audio = data.audio && typeof data.audio === 'object' ? data.audio : {};
+    const rawVolume = Number(audio.volume);
+    const validVolume = audio.volume !== undefined && Number.isFinite(rawVolume) && rawVolume >= 0 && rawVolume <= 1;
+    this.state.audio = {
+      muted: typeof audio.muted === 'boolean' ? audio.muted : false,
+      volume: validVolume ? rawVolume : 0.45
+    };
 
     // Stage 5: machine selection and daily missions
     const knownMachine = typeof MACHINE_DEFS !== 'undefined' && data.machineSelected && MACHINE_DEFS[data.machineSelected];

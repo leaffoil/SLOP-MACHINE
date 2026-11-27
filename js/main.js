@@ -31,7 +31,10 @@ function showSection(id) {
 }
 
 navBtns.forEach(btn => {
-  btn.addEventListener('click', () => showSection(btn.dataset.section));
+  btn.addEventListener('click', () => {
+    playUiClick();
+    showSection(btn.dataset.section);
+  });
 });
 
 // ---- Toast ----
@@ -68,29 +71,103 @@ function showModal(title, body, onConfirm) {
   cancelBtn.addEventListener('click', cleanup);
 }
 
-// ---- Mute toggle (UI only — wired to Audio in Stage 6) ----
-let muted = false;
-const muteBtn = document.getElementById('mute-btn');
-muteBtn.addEventListener('click', () => {
-  muted = !muted;
-  if (muted) {
-    muteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M11 5L6 9H2v6h4l5 4V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-      <line x1="23" y1="9" x2="17" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      <line x1="17" y1="9" x2="23" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    </svg>`;
-    muteBtn.style.color = 'var(--red)';
-    showToast('Sound muted');
-  } else {
-    muteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M11 5L6 9H2v6h4l5 4V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    </svg>`;
-    muteBtn.style.color = '';
-    showToast('Sound on');
+// ---- Audio controls ----
+const MUTED_ICON = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M11 5L6 9H2v6h4l5 4V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+  <line x1="23" y1="9" x2="17" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <line x1="17" y1="9" x2="23" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+</svg>`;
+const SOUND_ICON = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M11 5L6 9H2v6h4l5 4V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <path d="M19.07 4.93a10 10 0 0 1 0 14.14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+</svg>`;
+
+function audioPreferences() {
+  const state = window.Progression && window.Progression.state;
+  if (!state) return null;
+  if (!state.audio) state.audio = { muted: false, volume: 0.45 };
+  return state.audio;
+}
+
+function saveAudioPreferences() {
+  if (window.Progression && typeof window.Progression.save === 'function') {
+    window.Progression.save();
   }
-});
+}
+
+function refreshAudioUI() {
+  const audio = window.AudioSystem;
+  const btn = document.getElementById('mute-btn');
+  const slider = document.getElementById('volume-slider');
+  const label = document.getElementById('volume-value');
+  if (!audio) return;
+  if (btn) {
+    btn.innerHTML = audio.isMuted() ? MUTED_ICON : SOUND_ICON;
+    btn.style.color = audio.isMuted() ? 'var(--red)' : '';
+    btn.setAttribute('aria-label', audio.isMuted() ? 'Unmute sound' : 'Mute sound');
+    btn.title = audio.isMuted() ? 'Unmute sound' : 'Mute sound';
+  }
+  if (slider) slider.value = String(Math.round(audio.getVolume() * 100));
+  if (label) label.textContent = audio.isMuted() ? 'MUTED' : Math.round(audio.getVolume() * 100) + '%';
+}
+
+const muteBtn = document.getElementById('mute-btn');
+if (muteBtn) {
+  muteBtn.addEventListener('click', () => {
+    // The first interaction also unlocks the AudioContext.
+    if (window.AudioSystem) {
+      window.AudioSystem.unlock();
+      const next = !window.AudioSystem.isMuted();
+      window.AudioSystem.setMuted(next);
+      const prefs = audioPreferences();
+      if (prefs) prefs.muted = next;
+      saveAudioPreferences();
+      refreshAudioUI();
+      showToast(next ? 'Sound muted' : 'Sound on');
+    }
+  });
+}
+
+const volumeSlider = document.getElementById('volume-slider');
+if (volumeSlider) {
+  volumeSlider.addEventListener('input', () => {
+    if (!window.AudioSystem) return;
+    window.AudioSystem.unlock();
+    const volume = Number(volumeSlider.value) / 100;
+    window.AudioSystem.setVolume(volume);
+    const prefs = audioPreferences();
+    if (prefs) {
+      prefs.volume = volume;
+      if (volume > 0 && window.AudioSystem.isMuted()) {
+        window.AudioSystem.setMuted(false);
+        prefs.muted = false;
+      }
+    }
+    saveAudioPreferences();
+    refreshAudioUI();
+  });
+  volumeSlider.addEventListener('change', () => {
+    if (window.AudioSystem && !window.AudioSystem.isMuted()) {
+      window.AudioSystem.buttonClick();
+    }
+  });
+}
+
+// One-time unlock on the first user gesture anywhere in the document.
+function installAudioUnlock() {
+  if (document._audioUnlockInstalled) return;
+  document._audioUnlockInstalled = true;
+  const unlock = () => {
+    if (window.AudioSystem) window.AudioSystem.unlock();
+    refreshAudioUI();
+    document.removeEventListener('pointerdown', unlock);
+    document.removeEventListener('keydown', unlock);
+  };
+  document.addEventListener('pointerdown', unlock);
+  document.addEventListener('keydown', unlock);
+}
+installAudioUnlock();
 
 // ---- Prestige button (placeholder — wired in Stage 5) ----
 document.getElementById('prestige-btn').addEventListener('click', () => {
@@ -110,6 +187,13 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   );
 });
 
+/** Play a subtle UI click, unlocking audio on the first interaction. */
+function playUiClick() {
+  if (!window.AudioSystem) return;
+  window.AudioSystem.unlock();
+  window.AudioSystem.buttonClick();
+}
+
 // ---- Slot Machine Integration ----
 function initSlotMachine() {
   // Ensure SlotMachine is available
@@ -119,7 +203,10 @@ function initSlotMachine() {
   }
   
   // Wire spin button with economy integration (Stage 3)
-  document.getElementById('spin-btn').addEventListener('click', handleSpinClick);
+  document.getElementById('spin-btn').addEventListener('click', () => {
+    playUiClick();
+    handleSpinClick();
+  });
   
   // Wire STOP button
   const stopBtn = document.getElementById('stop-btn');
@@ -132,7 +219,10 @@ function initSlotMachine() {
   ['bet-up', 'bet-down', 'bet-min', 'bet-max'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) {
-      btn.addEventListener('click', () => handleBetControlClick(id));
+      btn.addEventListener('click', () => {
+        if (!btn.disabled) playUiClick();
+        handleBetControlClick(id);
+      });
     }
   });
   BetControls.bindUI();
@@ -142,7 +232,10 @@ function initSlotMachine() {
   document.querySelectorAll('.machine-card').forEach(card => {
     card.addEventListener('click', () => {
       const machineId = card.dataset.machine;
-      if (machineId) SlotMachine.switchMachine(machineId);
+      if (machineId) {
+        playUiClick();
+        SlotMachine.switchMachine(machineId);
+      }
     });
   });
   
@@ -151,6 +244,7 @@ function initSlotMachine() {
     if (payoutResult.winType === 'jackpot') {
       document.getElementById('slot-machine').classList.add('anticipation');
     }
+    if (window.AudioSystem) window.AudioSystem.spinStart();
     // Wire to economy - bet deduction happens here (Stage 3)
     if (window.Economy) {
       window.Economy.beginSpin(SlotMachine.currentBet);
@@ -163,10 +257,23 @@ function initSlotMachine() {
       chromeLights[reelIndex].classList.add('on');
       setTimeout(() => chromeLights[reelIndex].classList.remove('on'), 200);
     }
+    // Audio follows the real left-to-right reel stop events
+    if (window.AudioSystem) window.AudioSystem.reelStop(reelIndex);
   };
   
   SlotMachine.onSpinComplete = (payoutResult, spinSerial) => {
     document.getElementById('slot-machine').classList.remove('anticipation');
+
+    // Exactly one result sound: jackpot wins never also fire the win sound.
+    if (window.AudioSystem) {
+      if (payoutResult.isWin) {
+        if (payoutResult.winType === 'jackpot') window.AudioSystem.jackpot();
+        else window.AudioSystem.win();
+      } else {
+        window.AudioSystem.loss();
+      }
+      window.AudioSystem.stopReel(); // safety: loop must not outlive the spin
+    }
 
     // Stage 4: progression events (XP, levels, achievements, collections)
     if (window.Progression) {
@@ -239,6 +346,7 @@ function handleSpinClick() {
 }
 
 function handleStopClick() {
+  playUiClick();
   // Stop both the current spin and the auto-spin workflow
   if (autoSpinActive) stopAutoSpin('Auto-spin stopped');
   SlotMachine.stopAllReels();
@@ -332,11 +440,15 @@ const BetControls = {
     this._bound = true;
 
     document.querySelectorAll('.increment-btn[data-increment]').forEach(btn => {
-      btn.addEventListener('click', () => this.setIncrement(btn.dataset.increment));
+      btn.addEventListener('click', () => {
+        playUiClick();
+        this.setIncrement(btn.dataset.increment);
+      });
     });
 
     const applyBtn = document.getElementById('increment-apply');
     if (applyBtn) applyBtn.addEventListener('click', () => {
+      playUiClick();
       const input = document.getElementById('increment-custom');
       this.setIncrement(input ? input.value : '');
     });
@@ -410,6 +522,7 @@ function startAutoSpin() {
   
   autoSpinActive = true;
   autoSpinsRemaining = spins;
+  if (window.AudioSystem) window.AudioSystem.buttonClick();
   autoSpinTimer = setInterval(() => {
     if (!SlotMachine.isSpinning && autoSpinsRemaining > 0) {
       if (window.Economy && !window.Economy.canAfford(SlotMachine.currentBet)) {
@@ -438,6 +551,9 @@ function stopAutoSpin(message) {
   }
   autoSpinActive = false;
   autoSpinsRemaining = 0;
+  // Mid-spin STOP is handled by SlotMachine.stopAllReels(); here we only make
+  // sure no continuous loop survives if auto-spin ends between spins.
+  if (window.AudioSystem && !SlotMachine.isSpinning) window.AudioSystem.stopReel();
   updateAutoStopUI();
   if (typeof BetControls !== 'undefined') BetControls.updateUI();
   if (message) showToast(message, 2000);
@@ -458,7 +574,10 @@ function updateAutoStopUI() {
 // Wire up AUTO button
 const autoBtn = document.getElementById('auto-btn');
 if (autoBtn) {
-  autoBtn.addEventListener('click', startAutoSpin);
+  autoBtn.addEventListener('click', () => {
+    playUiClick();
+    startAutoSpin();
+  });
 }
 
 // Wire up auto +/- buttons
@@ -468,6 +587,7 @@ const autoAmount = document.getElementById('auto-amount');
 
 if (autoUp) {
   autoUp.addEventListener('click', () => {
+    playUiClick();
     if (autoAmount) {
       const val = Math.min(50, parseInt(autoAmount.textContent) + 5);
       autoAmount.textContent = val;
@@ -477,6 +597,7 @@ if (autoUp) {
 }
 if (autoDown) {
   autoDown.addEventListener('click', () => {
+    playUiClick();
     if (autoAmount) {
       const val = Math.max(5, parseInt(autoAmount.textContent) - 5);
       autoAmount.textContent = val;
