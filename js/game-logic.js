@@ -463,12 +463,15 @@ const ReelAnimator = {
   DECEL_DURATION: 420, // ms to decelerate to stop
   SPINNING_DURATION: 600, // ms to maintain spinning before auto-stop
   STOP_STAGGER: 300, // ms between sequential reel stops (visible gap)
-  SETTLING_DURATION: 200, // ms subtle settling after stop
+  SETTLING_DURATION: 220, // ms subtle settling after stop
+  BOUNCE_AMOUNT: 3, // px travelled beyond the target before rebounding
+  STRIP_CYCLES: 2, // identical strip copies make wrapping seamless
   
   // Performance settings
   MAX_SPEED: 8, // pixels per frame
   ACCEL_SPEED_FACTOR: 2.5, // speed curve exponent
   WINDOW_CENTER: 55, // Center of .reel-window (110px / 2)
+  WRAP_MARGIN: 110, // keep a full window of symbols above the strip end
   
   // State
   isAnimating: false,
@@ -510,29 +513,59 @@ const ReelAnimator = {
   prepareReel(reelElement, outcome, reelIndex) {
     // Clear existing symbols to prevent duplicates
     reelElement.innerHTML = '';
-    
+
+    // One cycle: 5 lead-in symbols, the 3 outcome symbols, 5 trail-out symbols.
+    // The cycle is duplicated so wrapping by cycleLen is pixel-identical and
+    // the visible window always has symbols on both sides (no blank gap).
+    const cycle = [];
+    for (let i = 0; i < 5; i++) cycle.push(OutcomeGenerator.pickSymbol());
+    cycle.push(...outcome[reelIndex]);
+    for (let i = 0; i < 5; i++) cycle.push(OutcomeGenerator.pickSymbol());
+
     const stripSymbols = [];
-    for (let i = 0; i < 5; i++) stripSymbols.push(OutcomeGenerator.pickSymbol());
-    stripSymbols.push(...outcome[reelIndex]);
-    for (let i = 0; i < 5; i++) stripSymbols.push(OutcomeGenerator.pickSymbol());
-    
+    for (let c = 0; c < this.STRIP_CYCLES; c++) stripSymbols.push(...cycle);
+
     stripSymbols.forEach(symbolId => {
       reelElement.appendChild(this.createSymbolElement(symbolId));
     });
-    
-    // Use SYMBOL_HEIGHT (94) for accurate strip calculation
-    const stripLength = stripSymbols.length * this.SYMBOL_HEIGHT;
-    
+
+    // Use SYMBOL_HEIGHT (94) for accurate strip calculation.
+    // stripLength keeps its original meaning (one cycle) for compatibility;
+    // totalStripLength is the full duplicated DOM strip.
+    const cycleLength = cycle.length * this.SYMBOL_HEIGHT;
+    const stripLength = cycleLength;
+    const totalStripLength = stripSymbols.length * this.SYMBOL_HEIGHT;
+
     // Calculate target offset to center the middle outcome symbol (index 6)
     // Math: scrollY + (6 * SYMBOL_HEIGHT) + (SYMBOL_HEIGHT/2) = WINDOW_CENTER
     // Solve: scrollY = WINDOW_CENTER - 6*SYMBOL_HEIGHT - SYMBOL_HEIGHT/2
     const symbolIndex = 6; // Middle outcome symbol position in strip
     const targetOffset = -(symbolIndex * this.SYMBOL_HEIGHT + this.SYMBOL_HEIGHT / 2 - this.WINDOW_CENTER);
-    
-    reelElement.style.transform = `translateY(${-(5 * this.SYMBOL_HEIGHT)}px)`;
-    
-    return { stripLength, targetOffset, totalSymbols: stripSymbols.length, targetIndex: 6 };
+
+    // Start already wrapped into the second cycle so the first animation
+    // frame never jumps (the two cycles are pixel-identical).
+    const startY = -(5 * this.SYMBOL_HEIGHT + cycleLength);
+    reelElement.style.transform = `translateY(${startY}px)`;
+
+    return {
+      stripLength, totalStripLength, cycleLength, targetOffset, startY,
+      totalSymbols: stripSymbols.length, targetIndex: 6
+    };
   },
+
+  /** Equivalent target offsets (same symbols because the strip is periodic). */
+  equivalentTargets(targetOffset, cycleLength) {
+    return [targetOffset - cycleLength, targetOffset, targetOffset + cycleLength];
+  },
+
+  /** Nearest equivalent target to a scroll position (continuous landing point). */
+  nearestTarget(scrollY, targetOffset, cycleLength) {
+    const k = Math.round((scrollY - targetOffset) / cycleLength);
+    return targetOffset + k * cycleLength;
+  },
+
+  /** Ease-out cubic used for the final approach. */
+  easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); },
   
   /**
    * Continuous animation loop using requestAnimationFrame
@@ -540,20 +573,29 @@ const ReelAnimator = {
   animateReel(reelElement, reelIndex, reelInfo, onComplete) {
     const state = {
       phase: this.PHASE.ACCELERATING,
-      scrollY: -(5 * this.SYMBOL_HEIGHT),
+      scrollY: reelInfo.startY,
       speed: 0,
       stopTriggered: false,
       decelerationStart: null,
+      decelFrom: 0,
+      stopTarget: null,
+      settleFrom: null,
+      bounceSign: 1,
+      cancelled: false,
       startTime: performance.now(),
       rafId: null
     };
-    
+
+    state.reelInfo = reelInfo;
     this.activeReels[reelIndex] = state;
     const self = this;
-    const stripLength = reelInfo.stripLength;
+    const cycleLength = reelInfo.cycleLength;
+    const totalStripLength = reelInfo.totalStripLength;
     const targetOffset = reelInfo.targetOffset;
+    const wrapAt = -(totalStripLength / 2 - self.WINDOW_CENTER - self.WRAP_MARGIN);
     
     function animateLoop() {
+      if (state.cancelled) return;
       const now = performance.now();
       const elapsed = now - state.startTime;
       
@@ -565,57 +607,64 @@ const ReelAnimator = {
           break;
           
         case self.PHASE.SPINNING:
-          // Explicit speed control during spinning phase
           const spinT = Math.min(elapsed / 300, 1);
           state.speed = self.MAX_SPEED * spinT;
-          
-          // Auto-stop trigger (but sequentialStop may have already triggered)
           if (!state.stopTriggered && elapsed >= self.SPINNING_DURATION) {
             self.stopReel(reelIndex);
           }
           break;
           
         case self.PHASE.DECELERATING:
-          const decelElapsed = now - state.decelerationStart;
-          const decelT = Math.min(decelElapsed / self.DECEL_DURATION, 1);
-          state.speed = self.MAX_SPEED * (1 - Math.pow(decelT, 1.5));
+          // Ease continuously from the current position to the nearest
+          // equivalent target — no teleport when the settle phase begins.
+          const decelDuration = state.decelDuration || self.DECEL_DURATION;
+          const decelT = Math.min((now - state.decelerationStart) / decelDuration, 1);
+          const eased = self.easeOutCubic(decelT);
+          state.scrollY = state.decelFrom + (state.stopTarget - state.decelFrom) * eased;
+          state.speed = Math.abs(state.stopTarget - state.decelFrom) / decelDuration * (1 - decelT);
           if (decelT >= 1) {
+            state.scrollY = state.stopTarget;
             state.phase = self.PHASE.SETTLING;
             state.settlingStart = now;
-            state.speed = 0; // Full stop before settle
+            state.settleFrom = state.scrollY;
+            state.bounceSign = state.stopTarget >= state.decelFrom ? 1 : -1;
+            reelElement.classList.remove('spinning');
+            reelElement.classList.add('settling');
           }
           break;
           
         case self.PHASE.SETTLING:
-          // Subtle settling: stay near target with small random wobble
-          const settleElapsed = now - state.settlingStart;
-          const settleT = Math.min(settleElapsed / self.SETTLING_DURATION, 1);
-          
-          // Slight nudge towards target during settle, then hold
-          const nudge = state.nudge || 0;
-          state.nudge = Math.min(nudge + 1, 10);
-          
-          // Stay at target position during settle (no bouncing away)
-          state.scrollY = targetOffset + Math.sin(settleT * Math.PI) * 2;
-          
+          // Mechanical settle: travel ~3px past the target, then rebound
+          // smoothly into the exact target position.
+          const settleT = Math.min((now - state.settlingStart) / self.SETTLING_DURATION, 1);
+          // sin(pi*t) peaks at t=0.5: a subtle overshoot and return
+          state.scrollY = state.settleFrom + state.bounceSign * self.BOUNCE_AMOUNT * Math.sin(settleT * Math.PI);
           if (settleT >= 1) {
-            state.scrollY = targetOffset; // Exact final position
+            // stopTarget is an exact equivalent of targetOffset: the duplicated
+            // strip is periodic, so this position centers the outcome symbol
+            // precisely without any end-of-settle jump.
+            state.scrollY = state.stopTarget;
+            reelElement.style.transform = `translateY(${state.scrollY.toFixed(2)}px)`;
             state.phase = self.PHASE.DONE;
             state.rafId = null;
-            
-            reelElement.classList.remove('spinning');
+
+            reelElement.classList.remove('spinning', 'settling');
             delete self.activeReels[reelIndex];
-            
+
             if (onComplete) onComplete(reelIndex);
             return;
           }
           break;
       }
       
-      // Apply continuous movement
+      // Continuous scrolling with seamless wrap inside the duplicated strip
       if (state.phase === self.PHASE.ACCELERATING || state.phase === self.PHASE.SPINNING) {
         state.scrollY += state.speed;
-        if (state.scrollY > 0) state.scrollY -= stripLength;
+        while (state.scrollY > wrapAt) state.scrollY -= cycleLength;
+        // Guard against ever leaving the duplicated strip bounds
+        while (state.scrollY < -(totalStripLength - self.WINDOW_CENTER - self.WRAP_MARGIN)) {
+          state.scrollY += cycleLength;
+        }
       }
       
       reelElement.style.transform = `translateY(${state.scrollY.toFixed(2)}px)`;
@@ -629,22 +678,36 @@ const ReelAnimator = {
    * Stop a specific reel (begin deceleration)
    * Idempotent - safe to call multiple times
    */
-  stopReel(reelIndex) {
+  stopReel(reelIndex, reelInfo) {
     const state = this.activeReels[reelIndex];
     if (!state || state.stopTriggered) return; // Prevent duplicate triggers
-    
+
     state.stopTriggered = true;
-    
-    // Allow stop from ACCELERATING, SPINNING, or even DECELERATING (skip if already stopping)
-    if (state.phase === this.PHASE.SPINNING) {
-      state.phase = this.PHASE.DECELERATING;
-      state.decelerationStart = performance.now();
-    } else if (state.phase === this.PHASE.ACCELERATING) {
-      // Transition directly to deceleration
+
+    // Plan a continuous approach to the nearest equivalent target. Because
+    // the strip is duplicated, every equivalent target displays the same
+    // outcome symbols, so we never need to teleport at the settle phase.
+    const info = reelInfo || state.reelInfo;
+    if (info) {
+      state.stopTarget = this.nearestTarget(state.scrollY, info.targetOffset, info.cycleLength);
+      state.decelFrom = state.scrollY;
+      const distance = Math.abs(state.stopTarget - state.scrollY);
+      // Keep the approach speed close to the spin speed even if the stop is
+      // requested far from an equivalent target.
+      state.decelDuration = Math.min(
+        Math.max(this.DECEL_DURATION, (distance / this.MAX_SPEED) * 16.7),
+        900
+      );
+    } else {
+      state.stopTarget = state.scrollY;
+      state.decelFrom = state.scrollY;
+      state.decelDuration = this.DECEL_DURATION;
+    }
+
+    if (state.phase === this.PHASE.SPINNING || state.phase === this.PHASE.ACCELERATING) {
       state.phase = this.PHASE.DECELERATING;
       state.decelerationStart = performance.now();
     }
-    // If already in DECELERATING, no action needed
   },
   
   /**
@@ -667,21 +730,42 @@ const ReelAnimator = {
     reelElements.forEach(el => el.classList.add('spinning'));
     
     // Start all reels quickly (all spin together, sequential stop comes later)
-    const promises = reelElements.map((reel, index) => 
+    let settledCount = 0;
+    const promises = reelElements.map((reel, index) =>
       new Promise((resolve) => {
-        this.animateReel(reel, index, reelInfos[index], resolve);
+        this.animateReel(reel, index, reelInfos[index], (reelIndex) => {
+          settledCount += 1;
+          // First two reels settled, final reel still spinning: anticipation
+          if (settledCount === 2) {
+            const lastReel = reelElements[reelElements.length - 1];
+            if (lastReel) lastReel.classList.add('anticipating');
+            const winLine = document.getElementById('win-line');
+            if (winLine) winLine.classList.add('anticipating');
+          }
+          if (reelIndex === reelElements.length - 1) {
+            const lastReel = reelElements[reelElements.length - 1];
+            if (lastReel) lastReel.classList.remove('anticipating');
+            const winLine = document.getElementById('win-line');
+            if (winLine) winLine.classList.remove('anticipating');
+          }
+          if (onReelStop) onReelStop(reelIndex);
+          resolve(reelIndex);
+        });
       })
     );
     this.animationPromises = promises;
-    
+
     // Sequential stopping: stop reel 0, wait briefly, then stop reel 1, etc.
     this.sequentialStop(reelElements, outcome);
-    
+
     try {
       await Promise.all(promises);
     } finally {
       this.isAnimating = false;
       this.animationPromises = [];
+      reelElements.forEach(r => r.classList.remove('anticipating'));
+      const winLine = document.getElementById('win-line');
+      if (winLine) winLine.classList.remove('anticipating');
     }
   },
   
@@ -740,10 +824,12 @@ const ReelAnimator = {
   stopAll() {
     Object.keys(this.activeReels).forEach(idx => {
       const state = this.activeReels[idx];
-      if (state && state.rafId) cancelAnimationFrame(state.rafId);
+      if (!state) return;
+      state.cancelled = true; // prevent any queued frame from rescheduling
+      if (state.rafId) cancelAnimationFrame(state.rafId);
     });
-    
-    document.querySelectorAll('.reel').forEach(r => r.classList.remove('spinning', 'settling'));
+
+    document.querySelectorAll('.reel').forEach(r => r.classList.remove('spinning', 'settling', 'anticipating'));
     this.activeReels = {};
     this.isAnimating = false;
     this.animationPromises = [];
@@ -927,7 +1013,7 @@ const SlotMachine = {
     resultText.textContent = 'SPINNING...';
     resultText.className = 'result-text';
     payoutText.textContent = '';
-    winLine.classList.remove('active');
+    winLine.classList.remove('active', 'win-pulse', 'anticipating');
     
     // Clear winning highlights
     document.querySelectorAll('.symbol-slot.winning').forEach(el => {
@@ -944,6 +1030,10 @@ const SlotMachine = {
     const winLine = document.getElementById('win-line');
     
     if (payoutResult.isWin) {
+      // One-shot payline pulse only for a real, already-determined win
+      winLine.classList.remove('win-pulse');
+      void winLine.offsetWidth; // restart the one-shot animation
+      winLine.classList.add('win-pulse');
       if (payoutResult.winType === 'jackpot') {
         resultText.textContent = 'JACKPOT!';
         resultText.className = 'result-text jackpot-txt';

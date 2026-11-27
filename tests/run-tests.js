@@ -723,9 +723,10 @@ function testPayoutRegression() {
     [['cherry', 'lemon', 'watermelon'], ['lemon', 'cherry', 'star'], ['star', 'seven', 'diamond']],
     0
   );
-  eq('Reel strip has 13 symbols', info.totalSymbols, 13);
+  eq('Reel strip duplicates one 13-symbol cycle for seamless wrapping', info.totalSymbols, 26);
+  eq('Reel one-cycle strip length is unchanged', info.stripLength, 13 * 94);
+  eq('Reel total strip length is two cycles', info.totalStripLength, 26 * 94);
   eq('Reel target offset centers the payline', info.targetOffset, -556);
-  eq('Reel strip length is correct', info.stripLength, 13 * 94);
 
   // stopReel is idempotent
   const animator = world.sandbox.ReelAnimator;
@@ -1005,6 +1006,152 @@ function testIncrementPersistence() {
 }
 
 // ------------------------------------------------------------
+// Reel animation polish tests
+// ------------------------------------------------------------
+
+function stepAnimation(world, frames, onFrame) {
+  const raf = world.sandbox._testRafQueue;
+  for (let i = 0; i < frames; i++) {
+    world.sandbox._testNow += 16.7;
+    const queue = raf.splice(0);
+    queue.forEach(fn => fn());
+    if (onFrame) onFrame(i);
+  }
+}
+
+function createAnimationWorld() {
+  // A VM world with a controllable clock and rAF queue for deterministic frames
+  const storage = createStorage();
+  const document = new FakeDocument();
+  const sandbox = {
+    console: quietConsole,
+    document,
+    localStorage: storage,
+    _testNow: 0,
+    _testRafQueue: [],
+    performance: { now: () => sandbox._testNow },
+    setTimeout: () => 0,
+    clearTimeout: () => {},
+    setInterval: () => 0,
+    clearInterval: () => {},
+    requestAnimationFrame: fn => { sandbox._testRafQueue.push(fn); return sandbox._testRafQueue.length; },
+    cancelAnimationFrame: () => {}
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  const context = vm.createContext(sandbox);
+  const full = path.join(ROOT, 'js/game-logic.js');
+  vm.runInContext(fs.readFileSync(full, 'utf8'), context, { filename: full });
+  return { sandbox, document };
+}
+
+function testAnimationPolish() {
+  console.log('\n=== Reel animation polish ===');
+
+  const world = createAnimationWorld();
+  const { sandbox } = world;
+  const R = sandbox.ReelAnimator;
+  const reel = new FakeElement('div');
+  const outcome = [
+    ['cherry', 'cherry', 'cherry'],
+    ['lemon', 'lemon', 'lemon'],
+    ['star', 'star', 'star']
+  ];
+  const info = R.prepareReel(reel, outcome, 0);
+
+  const phases = [];
+  const deltas = [];
+  const settleDeltas = [];
+  let previous = null;
+  let completed = 0;
+
+  R.animateReel(reel, 0, info, () => { completed += 1; });
+
+  stepAnimation(world, 300, i => {
+    const y = parseFloat(reel.style.transform.match(/-?[\d.]+/)[0]);
+    const state = R.activeReels[0];
+    const phase = state ? state.phase : 'done';
+    if (phases.length === 0 || phases[phases.length - 1] !== phase) phases.push(phase);
+    if (previous !== null) {
+      const d = Math.abs(y - previous);
+      deltas.push(d);
+      if (phase === R.PHASE.SETTLING) settleDeltas.push(d);
+    }
+    previous = y;
+    if (i === 40) R.stopReel(0);
+  });
+
+  const maxDelta = Math.max.apply(null, deltas.slice(1));
+  const maxSettleDelta = Math.max.apply(null, settleDeltas.length ? settleDeltas : [0]);
+  const finalY = parseFloat(reel.style.transform.match(/-?[\d.]+/)[0]);
+  const cycleRatio = (finalY - info.targetOffset) / info.cycleLength;
+
+  check('Reel passes through all animation phases',
+    ['accelerating', 'spinning', 'decelerating', 'settling', 'done'].every(p => phases.indexOf(p) !== -1),
+    phases.join(' > '));
+  check('No teleport between phases (max per-frame move < 40px)', maxDelta < 40, 'max ' + maxDelta.toFixed(1));
+  check('Settle overshoot is subtle (< 3px per frame)', maxSettleDelta < 3, 'max ' + maxSettleDelta.toFixed(2));
+  check('Final position is an exact equivalent of the target offset',
+    Math.abs(cycleRatio - Math.round(cycleRatio)) < 1e-6,
+    'final ' + finalY + ', target ' + info.targetOffset);
+  eq('onComplete fires exactly once', completed, 1);
+
+  // Reel strip is periodic: same symbol sequence in both halves
+  const firstHalf = reel.children.slice(0, 13).map(c => c.dataset.symbol).join(',');
+  const secondHalf = reel.children.slice(13).map(c => c.dataset.symbol).join(',');
+  eq('Strip halves are identical (seamless wrap)', firstHalf, secondHalf);
+
+  // Sequential stopping still works through stopReel on each reel
+  const two = createAnimationWorld();
+  const R2 = two.sandbox.ReelAnimator;
+  const reels = [0, 1, 2].map(i => new FakeElement('div'));
+  const infos = reels.map((r, i) => R2.prepareReel(r, outcome, i));
+  reels.forEach((r, i) => R2.animateReel(r, i, infos[i], () => {}));
+  stepAnimation(two, 10);
+  R2.stopReel(0);
+  stepAnimation(two, 2);
+  R2.stopReel(1);
+  stepAnimation(two, 2);
+  R2.stopReel(2);
+  const stopPhases = [0, 1, 2].map(i => R2.activeReels[i] && R2.activeReels[i].phase);
+  check('Each reel can be stopped independently', stopPhases.every(p => p === R2.PHASE.DECELERATING),
+    stopPhases.join(','));
+
+  // stopAll cancels loops and prevents rescheduling
+  const before = two.sandbox._testRafQueue.length;
+  R2.stopAll();
+  eq('stopAll clears active reels', Object.keys(R2.activeReels).length, 0);
+  stepAnimation(two, 5);
+  check('stopAll prevents stale frames', two.sandbox._testRafQueue.length <= before);
+}
+
+function testWinFeedback() {
+  console.log('\n=== Win / anticipation feedback ===');
+
+  const world = createWorld(createStorage());
+  const { document } = world;
+  const SlotMachine = world.sandbox.SlotMachine;
+  const spin = world.sandbox.SlotMachine;
+
+  const winLine = document.getElementById('win-line');
+  spin.showResult({ isWin: true, winType: 'regular', payout: 20, message: 'Cherry 2x!' });
+  check('Win adds payline pulse', winLine.classList.contains('win-pulse'));
+  check('Win line is active', winLine.classList.contains('active'));
+
+  spin.clearResultDisplay();
+  check('New spin clears win pulse', !winLine.classList.contains('win-pulse'));
+  check('New spin clears active line', !winLine.classList.contains('active'));
+
+  spin.showResult({ isWin: false, winType: 'none', payout: 0 });
+  check('Loss does not add winning pulse', !winLine.classList.contains('win-pulse'));
+  check('Loss does not activate win line', !winLine.classList.contains('active'));
+
+  // Highlight helper must ignore non-wins
+  spin.highlightWinningSymbols({ isWin: false, payout: 0 });
+  eq('Loss adds no winning symbol highlights', document.querySelectorAll('.symbol-slot.winning').length, 0);
+}
+
+// ------------------------------------------------------------
 // Run
 // ------------------------------------------------------------
 
@@ -1018,6 +1165,8 @@ try {
   testEconomyRegression();
   testProgressionRegression();
   testPayoutRegression();
+  testAnimationPolish();
+  testWinFeedback();
   testAutoSpinRegression();
   testBettingControls();
   testBettingLocking();
